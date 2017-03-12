@@ -27,6 +27,12 @@ frame_getlocals(PyFrameObject *f, void *closure)
     return f->f_locals;
 }
 
+static PyObject *
+frame_getinawait(PyFrameObject *f, void *closure)
+{
+    return PyBool_FromLong(f->f_inawait);
+}
+
 int
 PyFrame_GetLineNumber(PyFrameObject *f)
 {
@@ -358,6 +364,7 @@ static PyGetSetDef frame_getsetlist[] = {
     {"f_lineno",        (getter)frame_getlineno,
                     (setter)frame_setlineno, NULL},
     {"f_trace",         (getter)frame_gettrace, (setter)frame_settrace, NULL},
+    {"f_inawait",         (getter)frame_getinawait, NULL, NULL},
     {0}
 };
 
@@ -728,6 +735,7 @@ _PyFrame_New_NoTrack(PyThreadState *tstate, PyCodeObject *code,
     f->f_iblock = 0;
     f->f_executing = 0;
     f->f_gen = NULL;
+    f->f_inawait = 0;
 
     return f;
 }

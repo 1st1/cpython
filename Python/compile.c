@@ -1066,6 +1066,8 @@ PyCompile_OpcodeStackEffect(int opcode, int oparg)
             return 0;
         case GET_AWAITABLE:
             return 0;
+        case BEFORE_AWAIT:
+            return 0;
         case SETUP_ASYNC_WITH:
             return 6;
         case BEFORE_ASYNC_WITH:
@@ -4325,6 +4327,7 @@ compiler_visit_expr(struct compiler *c, expr_ty e)
                 c->u->u_scope_type != COMPILER_SCOPE_COMPREHENSION)
             return compiler_error(c, "'await' outside async function");
 
+        ADDOP(c, BEFORE_AWAIT);
         VISIT(c, expr, e->v.Await.value);
         ADDOP(c, GET_AWAITABLE);
         ADDOP_O(c, LOAD_CONST, Py_None, consts);

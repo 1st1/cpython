@@ -1938,10 +1938,17 @@ _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
             DISPATCH();
         }
 
+        TARGET(BEFORE_AWAIT) {
+            tstate->frame->f_inawait = 1;
+            DISPATCH();
+        }
+
         PREDICTED(GET_AWAITABLE);
         TARGET(GET_AWAITABLE) {
             PyObject *iterable = TOP();
             PyObject *iter = _PyCoro_GetAwaitableIter(iterable);
+
+            tstate->frame->f_inawait = 0;
 
             Py_DECREF(iterable);
 
