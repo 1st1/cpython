@@ -3568,6 +3568,10 @@ error:
         assert(why == WHY_NOT);
         why = WHY_EXCEPTION;
 
+        /* If an error occurred inside an await expression,
+           we need to reset f_inawait. */
+        tstate->frame->f_inawait = 0;
+
         /* Double-check exception status. */
 #ifdef NDEBUG
         if (!PyErr_Occurred())
