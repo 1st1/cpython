@@ -4,6 +4,7 @@ import sys, io, os
 import struct
 import subprocess
 import textwrap
+import types
 import warnings
 import operator
 import codecs
@@ -1245,6 +1246,149 @@ class ExecutionContextTest(unittest.TestCase):
             c.get('a')
 
         self.assertEqual(c2.get('a'), 42)
+
+    def test_sys_exec_context_2(self):
+        def deeply_nested():
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+
+        def nested():
+            sys.set_execution_context_value('a', 142)
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            yield from deeply_nested()
+
+        ctx = sys.get_execution_context()
+        try:
+            sys.set_execution_context_value('a', 42)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen = nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            with self.assertRaises(StopIteration):
+                gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+        finally:
+            sys.set_execution_context(ctx)
+
+    def test_sys_exec_context_3(self):
+        @types.coroutine
+        def thats_deep():
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_value('a', 1420)
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 1420)
+
+        async def deeply_nested():
+            await thats_deep()
+            self.assertEqual(sys.get_execution_context_value('a'), 1420)
+            sys.set_execution_context_value('a', 14200)
+
+        async def nested():
+            sys.set_execution_context_value('a', 142)
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            await deeply_nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 14200)
+
+        ctx = sys.get_execution_context()
+        try:
+            sys.set_execution_context_value('a', 42)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen = nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            with self.assertRaises(StopIteration):
+                gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+        finally:
+            sys.set_execution_context(ctx)
+
+    def test_sys_exec_context_4(self):
+        @types.coroutine
+        def thats_deep():
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_value('a', 1420)
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 1420)
+
+        @types.coroutine
+        def deeply_nested():
+            yield from thats_deep()
+            self.assertEqual(sys.get_execution_context_value('a'), 1420)
+            sys.set_execution_context_value('a', 14200)
+
+        @types.coroutine
+        def nested():
+            sys.set_execution_context_value('a', 142)
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            yield from deeply_nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 14200)
+
+        ctx = sys.get_execution_context()
+        try:
+            sys.set_execution_context_value('a', 42)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen = nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            with self.assertRaises(StopIteration):
+                gen.send(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+        finally:
+            sys.set_execution_context(ctx)
+
+    def test_sys_exec_context_5(self):
+        async def deeply_nested():
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+
+        async def nested():
+            sys.set_execution_context_value('a', 142)
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            yield
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            async for i in deeply_nested():
+                yield i
+
+        async def main():
+            sys.set_execution_context_value('a', 42)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            gen = nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            await gen.asend(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            await gen.asend(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            await gen.asend(None)
+            with self.assertRaises(StopAsyncIteration):
+                await gen.asend(None)
+            self.assertEqual(sys.get_execution_context_value('a'), 42)
+
+        ctx = sys.get_execution_context()
+        try:
+            m = main()
+            with self.assertRaises(StopIteration):
+                m.send(None)
+        finally:
+            sys.set_execution_context(ctx)
 
 
 def test_main():

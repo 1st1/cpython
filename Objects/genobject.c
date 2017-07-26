@@ -22,6 +22,7 @@ gen_traverse(PyGenObject *gen, visitproc visit, void *arg)
     Py_VISIT(gen->gi_code);
     Py_VISIT(gen->gi_name);
     Py_VISIT(gen->gi_qualname);
+    Py_VISIT(gen->gi_exec_context);
     return 0;
 }
 
@@ -115,11 +116,13 @@ gen_dealloc(PyGenObject *gen)
     Py_CLEAR(gen->gi_code);
     Py_CLEAR(gen->gi_name);
     Py_CLEAR(gen->gi_qualname);
+    Py_CLEAR(gen->gi_exec_context);
     PyObject_GC_Del(gen);
 }
 
+
 static PyObject *
-gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
+_gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
 {
     PyThreadState *tstate = PyThreadState_GET();
     PyFrameObject *f = gen->gi_frame;
@@ -298,6 +301,39 @@ gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
     return result;
 }
 
+
+#define _GEN_ENTER_CONTEXT(gen, tstate)                         \
+    PyExecutionContext *_ctx;                                   \
+    _ctx = tstate->exec_context;                                \
+    tstate->exec_context = gen->gi_exec_context;                \
+    gen->gi_exec_context = NULL;
+
+
+#define _GEN_EXIT_CONTEXT(gen, tstate, result)                  \
+    gen->gi_exec_context = tstate->exec_context;                \
+    Py_XINCREF(gen->gi_exec_context);                           \
+    if (result != NULL || !gen->gi_propagate_exec_context) {    \
+        Py_XDECREF(tstate->exec_context);                       \
+        Py_XINCREF(_ctx);                                       \
+        tstate->exec_context = _ctx;                            \
+    }                                                           \
+    Py_XDECREF(_ctx);
+
+
+static PyObject *
+gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    PyObject *result;
+
+    _GEN_ENTER_CONTEXT(gen, tstate)
+    result = _gen_send_ex(gen, arg, exc, closing);
+    _GEN_EXIT_CONTEXT(gen, tstate, result)
+
+    return result;
+}
+
+
 PyDoc_STRVAR(send_doc,
 "send(arg) -> send 'arg' into generator,\n\
 return next yielded value or raise StopIteration.");
@@ -413,8 +449,8 @@ PyDoc_STRVAR(throw_doc,
 return next yielded value or raise StopIteration.");
 
 static PyObject *
-_gen_throw(PyGenObject *gen, int close_on_genexit,
-           PyObject *typ, PyObject *val, PyObject *tb)
+_gen_throw_impl(PyGenObject *gen, int close_on_genexit,
+                PyObject *typ, PyObject *val, PyObject *tb)
 {
     PyObject *yf = _PyGen_yf(gen);
     _Py_IDENTIFIER(throw);
@@ -434,7 +470,7 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
             gen->gi_running = 0;
             Py_DECREF(yf);
             if (err < 0)
-                return gen_send_ex(gen, Py_None, 1, 0);
+                return _gen_send_ex(gen, Py_None, 1, 0);
             goto throw_here;
         }
         if (PyGen_CheckExact(yf) || PyCoro_CheckExact(yf)) {
@@ -442,8 +478,8 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
             gen->gi_running = 1;
             /* Close the generator that we are currently iterating with
                'yield from' or awaiting on with 'await'. */
-            ret = _gen_throw((PyGenObject *)yf, close_on_genexit,
-                             typ, val, tb);
+            ret = _gen_throw_impl((PyGenObject *)yf, close_on_genexit,
+                                  typ, val, tb);
             gen->gi_running = 0;
         } else {
             /* `yf` is an iterator or a coroutine-like object. */
@@ -473,10 +509,10 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
             assert(gen->gi_frame->f_lasti >= 0);
             gen->gi_frame->f_lasti += sizeof(_Py_CODEUNIT);
             if (_PyGen_FetchStopIterationValue(&val) == 0) {
-                ret = gen_send_ex(gen, val, 0, 0);
+                ret = _gen_send_ex(gen, val, 0, 0);
                 Py_DECREF(val);
             } else {
-                ret = gen_send_ex(gen, Py_None, 1, 0);
+                ret = _gen_send_ex(gen, Py_None, 1, 0);
             }
         }
         return ret;
@@ -530,7 +566,7 @@ throw_here:
     }
 
     PyErr_Restore(typ, val, tb);
-    return gen_send_ex(gen, Py_None, 1, 0);
+    return _gen_send_ex(gen, Py_None, 1, 0);
 
 failed_throw:
     /* Didn't use our arguments, so restore their original refcounts */
@@ -538,6 +574,20 @@ failed_throw:
     Py_XDECREF(val);
     Py_XDECREF(tb);
     return NULL;
+}
+
+static PyObject *
+_gen_throw(PyGenObject *gen, int close_on_genexit,
+           PyObject *typ, PyObject *val, PyObject *tb)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    PyObject *result;
+
+    _GEN_ENTER_CONTEXT(gen, tstate)
+    result = _gen_throw_impl(gen, close_on_genexit, typ, val, tb);
+    _GEN_EXIT_CONTEXT(gen, tstate, result)
+
+    return result;
 }
 
 
@@ -798,6 +848,7 @@ static PyObject *
 gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
                       PyObject *name, PyObject *qualname)
 {
+    PyThreadState *tstate = PyThreadState_GET();
     PyGenObject *gen = PyObject_GC_New(PyGenObject, type);
     if (gen == NULL) {
         Py_DECREF(f);
@@ -819,6 +870,11 @@ gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
     else
         gen->gi_qualname = gen->gi_name;
     Py_INCREF(gen->gi_qualname);
+
+    Py_XINCREF(tstate->exec_context);
+    gen->gi_propagate_exec_context = 0;
+    gen->gi_exec_context = tstate->exec_context;
+
     _PyObject_GC_TRACK(gen);
     return (PyObject *)gen;
 }

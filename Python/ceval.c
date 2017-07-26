@@ -2000,6 +2000,9 @@ _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
             PyObject *receiver = TOP();
             int err;
             if (PyGen_CheckExact(receiver) || PyCoro_CheckExact(receiver)) {
+                if ((co->co_flags & (CO_COROUTINE | CO_ITERABLE_COROUTINE))) {
+                    ((PyGenObject *)receiver)->gi_propagate_exec_context = 1;
+                }
                 retval = _PyGen_Send((PyGenObject *)receiver, v);
             } else {
                 _Py_IDENTIFIER(send);

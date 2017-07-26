@@ -1370,6 +1370,83 @@ sys_new_execution_context(PyObject *self)
 }
 
 
+static PyObject *
+sys_get_execution_context(PyObject *self)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    if (tstate->exec_context == NULL) {
+        Py_RETURN_NONE;
+    }
+
+    Py_INCREF(tstate->exec_context);
+    return (PyObject*)tstate->exec_context;
+}
+
+
+static PyObject *
+sys_set_execution_context(PyObject *self, PyObject *ctx)
+{
+    if (ctx == Py_None) {
+        ctx = NULL;
+    }
+
+    if (PyExecutionContext_Set((PyExecutionContext*)ctx)) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+static PyObject *
+sys_set_execution_context_value(PyObject *self, PyObject *args)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    PyObject *key, *value;
+
+    if (!PyArg_ParseTuple(args, "OO:set_execution_context_value",
+                          &key, &value)) {
+        return NULL;
+    }
+
+    if (tstate->exec_context == NULL) {
+        tstate->exec_context = PyExecutionContext_New();
+        if (tstate->exec_context == NULL) {
+            return NULL;
+        }
+    }
+
+    PyExecutionContext *o = PyExecutionContext_SetItem(
+        tstate->exec_context, key, value);
+
+    if (o == NULL) {
+        return NULL;
+    }
+
+    Py_DECREF(tstate->exec_context);
+    tstate->exec_context = o;
+    Py_RETURN_NONE;
+}
+
+static PyObject *
+sys_get_execution_context_value(PyObject *self, PyObject *key)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+
+    if (tstate->exec_context != NULL) {
+        return PyExecutionContext_GetItem(tstate->exec_context, key);
+    }
+
+    PyObject *val = PyTuple_Pack(1, key);
+    if (!val) {
+        return NULL;
+    }
+    PyErr_SetObject(PyExc_LookupError, val);
+    Py_DECREF(val);
+    return NULL;
+}
+
+
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
     {"callstats", (PyCFunction)sys_callstats, METH_NOARGS,
@@ -1460,6 +1537,16 @@ static PyMethodDef sys_methods[] = {
 #endif
      {"new_execution_context", (PyCFunction)sys_new_execution_context,
       METH_NOARGS, NULL},
+     {"get_execution_context", (PyCFunction)sys_get_execution_context,
+      METH_NOARGS, NULL},
+     {"set_execution_context", (PyCFunction)sys_set_execution_context,
+      METH_O, NULL},
+     {"set_execution_context_value",
+      (PyCFunction)sys_set_execution_context_value,
+      METH_VARARGS, NULL},
+     {"get_execution_context_value",
+      (PyCFunction)sys_get_execution_context_value,
+      METH_O, NULL},
     {NULL,              NULL}           /* sentinel */
 };
 

@@ -18,6 +18,9 @@ struct _frame; /* Avoid including frameobject.h */
     struct _frame *prefix##_frame;                                          \
     /* True if generator is being executed. */                              \
     char prefix##_running;                                                  \
+    /* Set to '1' for coroutines that are being awaited. */                 \
+    /* Signals that the execution context changes should be propagated. */  \
+    char prefix##_propagate_exec_context;                                   \
     /* The code object backing the generator */                             \
     PyObject *prefix##_code;                                                \
     /* List of weak reference. */                                           \
@@ -25,7 +28,9 @@ struct _frame; /* Avoid including frameobject.h */
     /* Name of the generator. */                                            \
     PyObject *prefix##_name;                                                \
     /* Qualified name of the generator. */                                  \
-    PyObject *prefix##_qualname;
+    PyObject *prefix##_qualname;                                            \
+    /* Forked ExecutionContext */                                           \
+    PyExecutionContext *prefix##_exec_context;
 
 typedef struct {
     /* The gi_ prefix is intended to remind of generator-iterator. */

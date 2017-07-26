@@ -103,6 +103,18 @@ typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 #define PyTrace_C_RETURN 6
 #endif
 
+
+#ifdef Py_LIMITED_API
+typedef struct PyExecutionContext;
+#else
+typedef struct
+{
+    PyObject_HEAD
+    PyObject *ec_items;
+} PyExecutionContext;
+#endif
+
+
 #ifdef Py_LIMITED_API
 typedef struct _ts PyThreadState;
 #else
@@ -179,6 +191,8 @@ typedef struct _ts {
 
     PyObject *async_gen_firstiter;
     PyObject *async_gen_finalizer;
+
+    PyExecutionContext *exec_context;
 
     /* XXX signal handlers should also be here */
 
@@ -346,18 +360,20 @@ typedef struct _frame *(*PyThreadFrameGetter)(PyThreadState *self_);
 PyAPI_DATA(PyThreadFrameGetter) _PyThreadState_GetFrame;
 #endif
 
-typedef struct
-{
-    PyObject_HEAD
-    PyObject *ec_items;
-} PyExecutionContext;
-
+#ifndef Py_LIMITED_API
 PyAPI_DATA(PyTypeObject) PyExecutionContext_Type;
 
+#define PyExecutionContext_CheckExact(op) \
+    (Py_TYPE(op) == &PyExecutionContext_Type)
+
 PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_New(void);
-PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_From(PyExecutionContext *);
 PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_SetItem(
     PyExecutionContext *, PyObject *, PyObject *);
+PyAPI_FUNC(int) PyExecutionContext_Set(PyExecutionContext *);
+PyAPI_FUNC(PyObject *) PyExecutionContext_GetItem(PyExecutionContext *,
+                                                  PyObject *);
+
+#endif
 
 #ifdef __cplusplus
 }
