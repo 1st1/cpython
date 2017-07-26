@@ -346,6 +346,19 @@ typedef struct _frame *(*PyThreadFrameGetter)(PyThreadState *self_);
 PyAPI_DATA(PyThreadFrameGetter) _PyThreadState_GetFrame;
 #endif
 
+typedef struct
+{
+    PyObject_HEAD
+    PyObject *ec_items;
+} PyExecutionContext;
+
+PyAPI_DATA(PyTypeObject) PyExecutionContext_Type;
+
+PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_New(void);
+PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_From(PyExecutionContext *);
+PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_SetItem(
+    PyExecutionContext *, PyObject *, PyObject *);
+
 #ifdef __cplusplus
 }
 #endif

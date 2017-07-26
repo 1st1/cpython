@@ -1231,8 +1231,25 @@ class SizeofTest(unittest.TestCase):
         self.assertIsNone(cur.finalizer)
 
 
+class ExecutionContextTest(unittest.TestCase):
+
+    def test_sys_exec_context_1(self):
+        c = sys.new_execution_context()
+        with self.assertRaisesRegex(LookupError, 'a'):
+            c.get('a')
+
+        c2 = c.set('a', 42)
+        self.assertIsNot(c, c2)
+
+        with self.assertRaisesRegex(LookupError, 'a'):
+            c.get('a')
+
+        self.assertEqual(c2.get('a'), 42)
+
+
 def test_main():
-    test.support.run_unittest(SysModuleTest, SizeofTest)
+    test.support.run_unittest(SysModuleTest, SizeofTest,
+                              ExecutionContextTest)
 
 if __name__ == "__main__":
     test_main()

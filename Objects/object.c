@@ -1820,6 +1820,9 @@ _Py_ReadyTypes(void)
 
     if (PyType_Ready(&_PyCoroWrapper_Type) < 0)
         Py_FatalError("Can't initialize coroutine wrapper type");
+
+    if (PyType_Ready(&PyExecutionContext_Type) < 0)
+        Py_FatalError("Can't initialize ExecutionContext type");
 }
 
 

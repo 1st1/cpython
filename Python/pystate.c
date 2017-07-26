@@ -962,6 +962,153 @@ PyGILState_Release(PyGILState_STATE oldstate)
         PyEval_SaveThread();
 }
 
+
+
+/* Execution Context */
+
+
+static void
+PyExecutionContext_dealloc(PyExecutionContext *ctx)
+{
+    _PyObject_GC_UNTRACK((PyObject *)ctx);
+    Py_CLEAR(ctx->ec_items);
+    PyObject_GC_Del(ctx);
+}
+
+
+static int
+PyExecutionContext_traverse(PyExecutionContext *ctx, visitproc visit, void *arg)
+{
+    Py_VISIT(ctx->ec_items);
+    return 0;
+}
+
+
+static PyExecutionContext *
+_PyExecutionContext_from_items(PyObject *items)
+{
+    PyExecutionContext *o;
+
+    o = PyObject_GC_New(PyExecutionContext, &PyExecutionContext_Type);
+    if (o == NULL) {
+        Py_DECREF(items);
+        return NULL;
+    }
+
+    o->ec_items = items;
+    _PyObject_GC_TRACK((PyObject*)o);
+    return o;
+
+}
+
+
+PyExecutionContext *
+PyExecutionContext_New(void)
+{
+    PyObject *items;
+
+    items = PyDict_New();
+    if (items == NULL) {
+        return NULL;
+    }
+
+    return _PyExecutionContext_from_items(items);
+}
+
+
+PyExecutionContext *
+PyExecutionContext_From(PyExecutionContext* other)
+{
+    PyObject *items;
+
+    items = PyDict_Copy(other->ec_items);
+    if (items == NULL) {
+        return NULL;
+    }
+
+    return _PyExecutionContext_from_items(items);
+}
+
+
+PyExecutionContext *
+PyExecutionContext_SetItem(PyExecutionContext* self, PyObject *key,
+                              PyObject *val)
+{
+    PyExecutionContext *fork;
+
+    fork = PyExecutionContext_From(self);
+    if (fork == NULL) {
+        return NULL;
+    }
+
+    if (PyDict_SetItem(fork->ec_items, key, val)) {
+        Py_DECREF(fork);
+        return NULL;
+    }
+
+    return fork;
+}
+
+
+static PyObject *
+PyExecutionContext_set(PyExecutionContext* self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *val;
+
+    if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
+        return NULL;
+    }
+
+    return (PyObject*)PyExecutionContext_SetItem(self, key, val);
+}
+
+
+static PyObject *
+PyExecutionContext_get(PyExecutionContext* self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *val;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 1, &key)) {
+        return NULL;
+    }
+
+    val = PyDict_GetItem(self->ec_items, key);
+    if (val) {
+        Py_INCREF(val);
+        return val;
+    }
+
+    val = PyTuple_Pack(1, key);
+    if (!val) {
+        return NULL;
+    }
+    PyErr_SetObject(PyExc_LookupError, val);
+    Py_DECREF(val);
+    return NULL;
+}
+
+
+static PyMethodDef PyExecutionContext_methods[] = {
+    {"set",(PyCFunction)PyExecutionContext_set, METH_VARARGS, NULL},
+    {"get",(PyCFunction)PyExecutionContext_get, METH_VARARGS, NULL},
+    {NULL, NULL}        /* Sentinel */
+};
+
+
+PyTypeObject PyExecutionContext_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "sys.ExecutionContext",
+    sizeof(PyExecutionContext),
+    .tp_methods = PyExecutionContext_methods,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_dealloc = (destructor)PyExecutionContext_dealloc,
+    .tp_traverse = (traverseproc)PyExecutionContext_traverse,
+};
+
+
 #endif /* WITH_THREAD */
 
 #ifdef __cplusplus

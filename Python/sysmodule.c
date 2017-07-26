@@ -1363,6 +1363,13 @@ sys_getandroidapilevel(PyObject *self)
 #endif   /* ANDROID_API_LEVEL */
 
 
+static PyObject *
+sys_new_execution_context(PyObject *self)
+{
+    return (PyObject*)PyExecutionContext_New();
+}
+
+
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
     {"callstats", (PyCFunction)sys_callstats, METH_NOARGS,
@@ -1451,6 +1458,8 @@ static PyMethodDef sys_methods[] = {
     {"getandroidapilevel", (PyCFunction)sys_getandroidapilevel, METH_NOARGS,
      getandroidapilevel_doc},
 #endif
+     {"new_execution_context", (PyCFunction)sys_new_execution_context,
+      METH_NOARGS, NULL},
     {NULL,              NULL}           /* sentinel */
 };
 
