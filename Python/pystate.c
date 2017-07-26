@@ -1075,23 +1075,19 @@ exec_context_setitem(PyExecutionContext* self, PyObject *args)
 
 
 
-PyObject *
-PyExecutionContext_GetItem(PyExecutionContext *ctx, PyObject *key)
+int
+PyExecutionContext_GetItem(PyExecutionContext *ctx, PyObject *key,
+                           PyObject **result)
 {
     PyObject *val;
     val = PyDict_GetItem(ctx->ec_items, key);
     if (val) {
         Py_INCREF(val);
-        return val;
+        *result = val;
+        return 0;
     }
 
-    val = PyTuple_Pack(1, key);
-    if (!val) {
-        return NULL;
-    }
-    PyErr_SetObject(PyExc_LookupError, val);
-    Py_DECREF(val);
-    return NULL;
+    return -1;
 }
 
 
@@ -1099,12 +1095,51 @@ static PyObject *
 exec_context_getitem(PyExecutionContext* self, PyObject *args)
 {
     PyObject *key;
+    PyObject *def = NULL;
+    PyObject *result;
 
-    if (!PyArg_UnpackTuple(args, "get", 1, 1, &key)) {
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
         return NULL;
     }
 
-    return PyExecutionContext_GetItem(self, key);
+    if (PyExecutionContext_GetItem(self, key, &result)) {
+        if (def != NULL) {
+            Py_INCREF(def);
+            return def;
+        }
+        else {
+            result = PyTuple_Pack(1, key);
+            if (!result) {
+                return NULL;
+            }
+            PyErr_SetObject(PyExc_LookupError, result);
+            Py_DECREF(result);
+            return NULL;
+        }
+    }
+    else {
+        return result;
+    }
+}
+
+
+static PyObject *
+exec_context_run(PyExecutionContext* self, PyObject *obj)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    PyExecutionContext *old_ctx;
+    PyObject *result;
+
+    old_ctx = tstate->exec_context;
+    Py_INCREF(self);
+    tstate->exec_context = self;
+
+    result = PyObject_CallObject(obj, NULL);
+
+    Py_XDECREF(tstate->exec_context);
+    tstate->exec_context = old_ctx;
+
+    return result;
 }
 
 
@@ -1136,6 +1171,7 @@ PyExecutionContext_Set(PyExecutionContext *ctx)
 static PyMethodDef PyExecutionContext_methods[] = {
     {"set",(PyCFunction)exec_context_setitem, METH_VARARGS, NULL},
     {"get",(PyCFunction)exec_context_getitem, METH_VARARGS, NULL},
+    {"run",(PyCFunction)exec_context_run, METH_O, NULL},
     {NULL, NULL}        /* Sentinel */
 };
 

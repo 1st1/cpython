@@ -370,9 +370,8 @@ PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_New(void);
 PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_SetItem(
     PyExecutionContext *, PyObject *, PyObject *);
 PyAPI_FUNC(int) PyExecutionContext_Set(PyExecutionContext *);
-PyAPI_FUNC(PyObject *) PyExecutionContext_GetItem(PyExecutionContext *,
-                                                  PyObject *);
-
+PyAPI_FUNC(int) PyExecutionContext_GetItem(PyExecutionContext *,
+                                           PyObject *, PyObject **);
 #endif
 
 #ifdef __cplusplus

@@ -1429,21 +1429,38 @@ sys_set_execution_context_value(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-sys_get_execution_context_value(PyObject *self, PyObject *key)
+sys_get_execution_context_value(PyObject *self, PyObject *args)
 {
     PyThreadState *tstate = PyThreadState_GET();
+    PyObject *value;
+    PyObject *key;
+    PyObject *def = NULL;
 
-    if (tstate->exec_context != NULL) {
-        return PyExecutionContext_GetItem(tstate->exec_context, key);
-    }
-
-    PyObject *val = PyTuple_Pack(1, key);
-    if (!val) {
+    if (!PyArg_UnpackTuple(args, "get_execution_context_value",
+                           1, 2, &key, &def))
+    {
         return NULL;
     }
-    PyErr_SetObject(PyExc_LookupError, val);
-    Py_DECREF(val);
-    return NULL;
+
+    if (tstate->exec_context == NULL ||
+            PyExecutionContext_GetItem(tstate->exec_context, key, &value))
+    {
+        if (def != NULL) {
+            Py_INCREF(def);
+            return def;
+        }
+        else {
+            value = PyTuple_Pack(1, key);
+            if (!value) {
+                return NULL;
+            }
+            PyErr_SetObject(PyExc_LookupError, value);
+            Py_DECREF(value);
+            return NULL;
+        }
+    }
+
+    return value;
 }
 
 
@@ -1546,7 +1563,7 @@ static PyMethodDef sys_methods[] = {
       METH_VARARGS, NULL},
      {"get_execution_context_value",
       (PyCFunction)sys_get_execution_context_value,
-      METH_O, NULL},
+      METH_VARARGS, NULL},
     {NULL,              NULL}           /* sentinel */
 };
 

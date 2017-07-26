@@ -84,7 +84,10 @@ class _GeneratorContextManager(_GeneratorContextManagerBase,
 
     def __enter__(self):
         try:
-            return next(self.gen)
+            self._ctx_before = sys.get_execution_context()
+            val = next(self.gen)
+            sys.set_execution_context(self.gen.gi_execution_context)
+            return val
         except StopIteration:
             raise RuntimeError("generator didn't yield") from None
 
@@ -93,7 +96,15 @@ class _GeneratorContextManager(_GeneratorContextManagerBase,
             try:
                 next(self.gen)
             except StopIteration:
+                sys.set_execution_context(self.gen.gi_execution_context)
                 return False
+            except Exception:
+                # Because the generator raised an exception, meaning
+                # that __exit__ is broken, we want to restore the
+                # global execution context to the last known
+                # working state.
+                sys.set_execution_context(self._ctx_before)
+                raise
             else:
                 raise RuntimeError("generator didn't stop")
         else:
@@ -133,6 +144,8 @@ class _GeneratorContextManager(_GeneratorContextManagerBase,
                 if sys.exc_info()[1] is value:
                     return False
                 raise
+            finally:
+                sys.set_execution_context(self.gen.gi_execution_context)
             raise RuntimeError("generator didn't stop after throw()")
 
 

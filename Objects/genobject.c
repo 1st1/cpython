@@ -122,9 +122,9 @@ gen_dealloc(PyGenObject *gen)
 
 
 static PyObject *
-_gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
+_gen_send_ex(PyGenObject *gen, PyThreadState *tstate,
+             PyObject *arg, int exc, int closing)
 {
-    PyThreadState *tstate = PyThreadState_GET();
     PyFrameObject *f = gen->gi_frame;
     PyObject *result;
 
@@ -320,14 +320,14 @@ _gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
     Py_XDECREF(_ctx);
 
 
-static PyObject *
+static inline PyObject *
 gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
 {
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
     _GEN_ENTER_CONTEXT(gen, tstate)
-    result = _gen_send_ex(gen, arg, exc, closing);
+    result = _gen_send_ex(gen, tstate, arg, exc, closing);
     _GEN_EXIT_CONTEXT(gen, tstate, result)
 
     return result;
@@ -449,7 +449,7 @@ PyDoc_STRVAR(throw_doc,
 return next yielded value or raise StopIteration.");
 
 static PyObject *
-_gen_throw_impl(PyGenObject *gen, int close_on_genexit,
+_gen_throw_impl(PyGenObject *gen, PyThreadState *tstate, int close_on_genexit,
                 PyObject *typ, PyObject *val, PyObject *tb)
 {
     PyObject *yf = _PyGen_yf(gen);
@@ -470,7 +470,7 @@ _gen_throw_impl(PyGenObject *gen, int close_on_genexit,
             gen->gi_running = 0;
             Py_DECREF(yf);
             if (err < 0)
-                return _gen_send_ex(gen, Py_None, 1, 0);
+                return _gen_send_ex(gen, tstate, Py_None, 1, 0);
             goto throw_here;
         }
         if (PyGen_CheckExact(yf) || PyCoro_CheckExact(yf)) {
@@ -478,7 +478,7 @@ _gen_throw_impl(PyGenObject *gen, int close_on_genexit,
             gen->gi_running = 1;
             /* Close the generator that we are currently iterating with
                'yield from' or awaiting on with 'await'. */
-            ret = _gen_throw_impl((PyGenObject *)yf, close_on_genexit,
+            ret = _gen_throw_impl((PyGenObject *)yf, tstate, close_on_genexit,
                                   typ, val, tb);
             gen->gi_running = 0;
         } else {
@@ -509,10 +509,10 @@ _gen_throw_impl(PyGenObject *gen, int close_on_genexit,
             assert(gen->gi_frame->f_lasti >= 0);
             gen->gi_frame->f_lasti += sizeof(_Py_CODEUNIT);
             if (_PyGen_FetchStopIterationValue(&val) == 0) {
-                ret = _gen_send_ex(gen, val, 0, 0);
+                ret = _gen_send_ex(gen, tstate, val, 0, 0);
                 Py_DECREF(val);
             } else {
-                ret = _gen_send_ex(gen, Py_None, 1, 0);
+                ret = _gen_send_ex(gen, tstate, Py_None, 1, 0);
             }
         }
         return ret;
@@ -566,7 +566,7 @@ throw_here:
     }
 
     PyErr_Restore(typ, val, tb);
-    return _gen_send_ex(gen, Py_None, 1, 0);
+    return _gen_send_ex(gen, tstate, Py_None, 1, 0);
 
 failed_throw:
     /* Didn't use our arguments, so restore their original refcounts */
@@ -584,7 +584,7 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
     PyObject *result;
 
     _GEN_ENTER_CONTEXT(gen, tstate)
-    result = _gen_throw_impl(gen, close_on_genexit, typ, val, tb);
+    result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
     _GEN_EXIT_CONTEXT(gen, tstate, result)
 
     return result;
@@ -766,6 +766,16 @@ gen_getyieldfrom(PyGenObject *gen)
     return yf;
 }
 
+static PyObject *
+gen_exec_context(PyGenObject *gen)
+{
+    if (gen->gi_exec_context == NULL) {
+        Py_RETURN_NONE;
+    }
+    Py_INCREF(gen->gi_exec_context);
+    return gen->gi_exec_context;
+}
+
 static PyGetSetDef gen_getsetlist[] = {
     {"__name__", (getter)gen_get_name, (setter)gen_set_name,
      PyDoc_STR("name of the generator")},
@@ -773,6 +783,7 @@ static PyGetSetDef gen_getsetlist[] = {
      PyDoc_STR("qualified name of the generator")},
     {"gi_yieldfrom", (getter)gen_getyieldfrom, NULL,
      PyDoc_STR("object being iterated by yield from, or None")},
+    {"gi_execution_context", (getter)gen_exec_context, NULL, NULL},
     {NULL} /* Sentinel */
 };
 
@@ -1014,6 +1025,7 @@ static PyGetSetDef coro_getsetlist[] = {
      PyDoc_STR("qualified name of the coroutine")},
     {"cr_await", (getter)coro_get_cr_await, NULL,
      PyDoc_STR("object being awaited on, or None")},
+    {"cr_execution_context", (getter)gen_exec_context, NULL, NULL},
     {NULL} /* Sentinel */
 };
 
