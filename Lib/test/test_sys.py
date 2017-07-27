@@ -5,6 +5,7 @@ import sys, io, os
 import struct
 import subprocess
 import textwrap
+import threading
 import types
 import warnings
 import operator
@@ -1292,6 +1293,7 @@ class ExecutionContextTest(unittest.TestCase):
             self.assertEqual(sys.get_execution_context_value('a'), 142)
             yield
             self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_value('a', 14200)
 
         def nested():
             sys.set_execution_context_value('a', 142)
@@ -1299,6 +1301,7 @@ class ExecutionContextTest(unittest.TestCase):
             yield
             self.assertEqual(sys.get_execution_context_value('a'), 142)
             yield from deeply_nested()
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
 
         sys.set_execution_context_value('a', 42)
         self.assertEqual(sys.get_execution_context_value('a'), 42)
@@ -1389,6 +1392,7 @@ class ExecutionContextTest(unittest.TestCase):
             self.assertEqual(sys.get_execution_context_value('a'), 142)
             yield
             self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_value('a', 14200)
 
         async def nested():
             sys.set_execution_context_value('a', 142)
@@ -1397,6 +1401,7 @@ class ExecutionContextTest(unittest.TestCase):
             self.assertEqual(sys.get_execution_context_value('a'), 142)
             async for i in deeply_nested():
                 yield i
+            self.assertEqual(sys.get_execution_context_value('a'), 142)
 
         async def main():
             sys.set_execution_context_value('a', 42)
@@ -1434,6 +1439,25 @@ class ExecutionContextTest(unittest.TestCase):
 
         self.assertEqual(worker(), 123)
         self.assertEqual(worker(), -1)
+
+    @preserve_global_context()
+    def test_sys_exec_context_thread_1(self):
+        VAL = None
+
+        class MyThread(threading.Thread):
+            def run(_self):
+                nonlocal VAL
+                VAL = sys.get_execution_context_value('aaa', None)
+                sys.set_execution_context_value('aaa', -1)
+                self.assertEqual(sys.get_execution_context_value('aaa'), -1)
+
+        sys.set_execution_context_value('aaa', 42)
+        t = MyThread()
+        t.start()
+        t.join()
+
+        self.assertEqual(VAL, 42)
+        self.assertEqual(sys.get_execution_context_value('aaa'), 42)
 
 
 def test_main():
