@@ -302,22 +302,17 @@ _gen_send_ex(PyGenObject *gen, PyThreadState *tstate,
 }
 
 
-#define _GEN_ENTER_CONTEXT(gen, tstate)                         \
+#define _GEN_PUSH_CONTEXT(gen, tstate)                          \
     PyExecutionContext *_ctx;                                   \
+    assert(!gen->gi_propagate_exec_context);                    \
     _ctx = tstate->exec_context;                                \
     tstate->exec_context = gen->gi_exec_context;                \
     gen->gi_exec_context = NULL;
 
 
-#define _GEN_EXIT_CONTEXT(gen, tstate, result)                  \
+#define _GEN_POP_CONTEXT(gen, tstate)                           \
     gen->gi_exec_context = tstate->exec_context;                \
-    Py_XINCREF(gen->gi_exec_context);                           \
-    if (result != NULL || !gen->gi_propagate_exec_context) {    \
-        Py_XDECREF(tstate->exec_context);                       \
-        Py_XINCREF(_ctx);                                       \
-        tstate->exec_context = _ctx;                            \
-    }                                                           \
-    Py_XDECREF(_ctx);
+    tstate->exec_context = _ctx;
 
 
 static inline PyObject *
@@ -326,9 +321,14 @@ gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
-    _GEN_ENTER_CONTEXT(gen, tstate)
-    result = _gen_send_ex(gen, tstate, arg, exc, closing);
-    _GEN_EXIT_CONTEXT(gen, tstate, result)
+    if (gen->gi_propagate_exec_context) {
+        result = _gen_send_ex(gen, tstate, arg, exc, closing);
+    }
+    else {
+        _GEN_PUSH_CONTEXT(gen, tstate)
+        result = _gen_send_ex(gen, tstate, arg, exc, closing);
+        _GEN_POP_CONTEXT(gen, tstate)
+    }
 
     return result;
 }
@@ -583,9 +583,14 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
-    _GEN_ENTER_CONTEXT(gen, tstate)
-    result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
-    _GEN_EXIT_CONTEXT(gen, tstate, result)
+    if (gen->gi_propagate_exec_context) {
+        result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
+    }
+    else {
+        _GEN_PUSH_CONTEXT(gen, tstate)
+        result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
+        _GEN_POP_CONTEXT(gen, tstate)
+    }
 
     return result;
 }
