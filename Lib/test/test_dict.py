@@ -276,6 +276,22 @@ class DictTest(unittest.TestCase):
         self.assertEqual({}.copy(), {})
         self.assertRaises(TypeError, d.copy, None)
 
+    def test_copy_fuzz(self):
+        for dict_size in [10, 100, 1000, 10000, 100000]:
+            dict_size = random.randrange(
+                dict_size // 2, dict_size + dict_size // 2)
+            with self.subTest(dict_size=dict_size):
+                d = {}
+                for i in range(dict_size):
+                    d[i] = i
+
+                d2 = d.copy()
+                self.assertIsNot(d2, d)
+                self.assertEqual(d, d2)
+                d2['key'] = 'value'
+                self.assertNotEqual(d, d2)
+                self.assertEqual(len(d2), len(d) + 1)
+
     def test_get(self):
         d = {}
         self.assertIs(d.get('c'), None)
