@@ -1272,19 +1272,9 @@ class ExecutionContextTest(unittest.TestCase):
 
     @preserve_global_context()
     def test_sys_exec_context_getter_2(self):
-        c = sys.new_execution_context()
-        with self.assertRaisesRegex(LookupError, 'a'):
-            c.get('a')
-        self.assertEqual(c.get('a', 10), 10)
-
-        c2 = c.set('a', 42)
-        self.assertIsNot(c, c2)
-
-        with self.assertRaisesRegex(LookupError, 'a'):
-            c.get('a')
-
-        self.assertEqual(c2.get('a'), 42)
-        self.assertEqual(c2.get('a', 10), 42)
+        c = sys.ExecutionContext()
+        self.assertEqual(c.get('a'), None)
+        self.assertEqual(c.get('a', 42), 42)
 
     @preserve_global_context()
     def test_sys_exec_context_2(self):
@@ -1422,6 +1412,27 @@ class ExecutionContextTest(unittest.TestCase):
             m.send(None)
 
     @preserve_global_context()
+    def test_sys_exec_context_6(self):
+        def deeply_nested():
+            self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+            yield
+            sys.set_execution_context_value('aaa', 42)
+
+        def nested():
+            self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+            yield
+            yield from deeply_nested()
+            self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+
+        sys.set_execution_context_value('aaa', 123)
+        gen = nested()
+        gen.send(None)
+        gen.send(None)
+        with self.assertRaises(StopIteration):
+            gen.send(None)
+        self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+
+    @preserve_global_context()
     def test_sys_exec_context_run_1(self):
         def worker():
             try:
@@ -1429,14 +1440,21 @@ class ExecutionContextTest(unittest.TestCase):
             finally:
                 sys.set_execution_context_value('aaa', -1)
 
+        # Set a value on the default context, let's call it (C1)
         sys.set_execution_context_value('aaa', 123)
 
-        ctx = sys.new_execution_context()
+        ctx = sys.ExecutionContext()
         self.assertIsNone(ctx.run(worker))
-        self.assertIsNone(ctx.get('aaa', None))
+        self.assertEqual(ctx.get('aaa', None), -1)
 
-        self.assertEqual(sys.get_execution_context().run(worker), 123)
+        self.assertEqual(sys.get_execution_context_value('aaa'), 123)
 
+        ctx2 = sys.get_execution_context()
+        # When we use ctx2 to run worker, it's important to understand
+        # that ctx2 is a "fork" with copy_on_write.
+        self.assertEqual(ctx2.run(worker), 123)
+
+        # Now we are back to the default context (C1)
         self.assertEqual(worker(), 123)
         self.assertEqual(worker(), -1)
 

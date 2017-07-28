@@ -1364,22 +1364,19 @@ sys_getandroidapilevel(PyObject *self)
 
 
 static PyObject *
-sys_new_execution_context(PyObject *self)
-{
-    return (PyObject*)PyExecutionContext_New();
-}
-
-
-static PyObject *
 sys_get_execution_context(PyObject *self)
 {
-    PyThreadState *tstate = PyThreadState_GET();
-    if (tstate->exec_context == NULL) {
+    PyExecutionContext *ctx;
+
+    if (PyExecutionContext_Get(&ctx)) {
+        return NULL;
+    }
+
+    if (ctx == NULL) {
         Py_RETURN_NONE;
     }
 
-    Py_INCREF(tstate->exec_context);
-    return (PyObject*)tstate->exec_context;
+    return (PyObject *)ctx;
 }
 
 
@@ -1416,15 +1413,10 @@ sys_set_execution_context_value(PyObject *self, PyObject *args)
         }
     }
 
-    PyExecutionContext *o = PyExecutionContext_SetItem(
-        tstate->exec_context, key, value);
-
-    if (o == NULL) {
+    if (PyExecutionContext_SetItem(tstate->exec_context, key, value)) {
         return NULL;
     }
 
-    Py_DECREF(tstate->exec_context);
-    tstate->exec_context = o;
     Py_RETURN_NONE;
 }
 
@@ -1552,8 +1544,6 @@ static PyMethodDef sys_methods[] = {
     {"getandroidapilevel", (PyCFunction)sys_getandroidapilevel, METH_NOARGS,
      getandroidapilevel_doc},
 #endif
-     {"new_execution_context", (PyCFunction)sys_new_execution_context,
-      METH_NOARGS, NULL},
      {"get_execution_context", (PyCFunction)sys_get_execution_context,
       METH_NOARGS, NULL},
      {"set_execution_context", (PyCFunction)sys_set_execution_context,
@@ -2180,6 +2170,13 @@ _PySys_BeginInit(void)
                 &AsyncGenHooksType, &asyncgen_hooks_desc) < 0) {
             return NULL;
         }
+    }
+
+    Py_INCREF((PyObject *)&PyExecutionContext_Type);
+    if (PyModule_AddObject(m, "ExecutionContext",
+                           (PyObject *)&PyExecutionContext_Type) != 0)
+    {
+        return NULL;
     }
 
     if (PyErr_Occurred())

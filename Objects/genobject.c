@@ -5,6 +5,8 @@
 #include "structmember.h"
 #include "opcode.h"
 
+#include "../Python/pystate-private.h"
+
 static PyObject *gen_close(PyGenObject *, PyObject *);
 static PyObject *async_gen_asend_new(PyAsyncGenObject *, PyObject *);
 static PyObject *async_gen_athrow_new(PyAsyncGenObject *, PyObject *);
@@ -778,7 +780,7 @@ gen_exec_context(PyGenObject *gen)
         Py_RETURN_NONE;
     }
     Py_INCREF(gen->gi_exec_context);
-    return gen->gi_exec_context;
+    return (PyObject *)gen->gi_exec_context;
 }
 
 static PyGetSetDef gen_getsetlist[] = {
@@ -864,7 +866,7 @@ static PyObject *
 gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
                       PyObject *name, PyObject *qualname)
 {
-    PyThreadState *tstate = PyThreadState_GET();
+    PyExecutionContext *ctx;
     PyGenObject *gen = PyObject_GC_New(PyGenObject, type);
     if (gen == NULL) {
         Py_DECREF(f);
@@ -887,9 +889,12 @@ gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
         gen->gi_qualname = gen->gi_name;
     Py_INCREF(gen->gi_qualname);
 
-    Py_XINCREF(tstate->exec_context);
+    if (_PyExecutionContext_Fork(&ctx)) {
+        Py_DECREF(gen);
+        return NULL;
+    }
     gen->gi_propagate_exec_context = 0;
-    gen->gi_exec_context = tstate->exec_context;
+    gen->gi_exec_context = ctx;
 
     _PyObject_GC_TRACK(gen);
     return (PyObject *)gen;
@@ -2149,3 +2154,7 @@ async_gen_athrow_new(PyAsyncGenObject *gen, PyObject *args)
     _PyObject_GC_TRACK((PyObject*)o);
     return (PyObject*)o;
 }
+
+
+#undef _GEN_PUSH_CONTEXT
+#undef _GEN_POP_CONTEXT

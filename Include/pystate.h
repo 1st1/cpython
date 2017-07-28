@@ -104,15 +104,7 @@ typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 #endif
 
 
-#ifdef Py_LIMITED_API
-typedef struct PyExecutionContext;
-#else
-typedef struct
-{
-    PyObject_HEAD
-    PyObject *ec_items;
-} PyExecutionContext;
-#endif
+typedef struct _execcontextobject PyExecutionContext;
 
 
 #ifdef Py_LIMITED_API
@@ -367,9 +359,10 @@ PyAPI_DATA(PyTypeObject) PyExecutionContext_Type;
     (Py_TYPE(op) == &PyExecutionContext_Type)
 
 PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_New(void);
-PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_SetItem(
-    PyExecutionContext *, PyObject *, PyObject *);
 PyAPI_FUNC(int) PyExecutionContext_Set(PyExecutionContext *);
+PyAPI_FUNC(int) PyExecutionContext_Get(PyExecutionContext **);
+PyAPI_FUNC(int) PyExecutionContext_SetItem(PyExecutionContext *,
+                                           PyObject *, PyObject *);
 PyAPI_FUNC(int) PyExecutionContext_GetItem(PyExecutionContext *,
                                            PyObject *, PyObject **);
 #endif
