@@ -1070,6 +1070,7 @@ Py_FinalizeEx(void)
     _Py_HashRandomization_Fini();
     _PyArg_Fini();
     PyAsyncGen_Fini();
+    PyExecutionContext_Fini();
 
     /* Cleanup Unicode implementation */
     _PyUnicode_Fini();

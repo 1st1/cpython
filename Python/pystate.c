@@ -977,13 +977,55 @@ PyGILState_Release(PyGILState_STATE oldstate)
 /* Execution Context */
 
 
+#ifndef PyExecutionContext_MAXFREELIST
+#define PyExecutionContext_MAXFREELIST 80
+#endif
+
+
+static PyExecutionContext
+    *exec_context_freelist[PyExecutionContext_MAXFREELIST];
+static int exec_context_freelist_free = 0;
+
+
+int
+PyExecutionContext_ClearFreeLists(void)
+{
+    int ret = exec_context_freelist_free;
+
+    while (exec_context_freelist_free) {
+        PyExecutionContext *o;
+        o = exec_context_freelist[--exec_context_freelist_free];
+        assert(PyExecutionContext_CheckExact(o));
+        PyObject_GC_Del(o);
+    }
+
+    return ret;
+}
+
+
+void
+PyExecutionContext_Fini(void)
+{
+    (void)PyExecutionContext_ClearFreeLists();
+}
+
+
 static void
 exec_context_dealloc(PyExecutionContext *ctx)
 {
     _PyObject_GC_UNTRACK((PyObject *)ctx);
+
     Py_CLEAR(ctx->ec_items);
     Py_CLEAR(ctx->ec_prev);
-    PyObject_GC_Del(ctx);
+    ctx->ec_copy_on_write = 0;
+
+    if (exec_context_freelist_free < PyExecutionContext_MAXFREELIST) {
+        assert(PyExecutionContext_CheckExact(ctx));
+        exec_context_freelist[exec_context_freelist_free++] = ctx;
+    }
+    else {
+        PyObject_GC_Del(ctx);
+    }
 }
 
 
@@ -993,6 +1035,23 @@ exec_context_traverse(PyExecutionContext *ctx, visitproc visit, void *arg)
     Py_VISIT(ctx->ec_items);
     Py_VISIT(ctx->ec_prev);
     return 0;
+}
+
+
+static inline PyExecutionContext *
+_exec_context_new(void)
+{
+    PyExecutionContext *ctx;
+
+    if (exec_context_freelist_free) {
+        exec_context_freelist_free--;
+        ctx = exec_context_freelist[exec_context_freelist_free];
+        assert(PyExecutionContext_CheckExact(ctx));
+        _Py_NewReference((PyObject *)ctx);
+        return ctx;
+    }
+
+    return PyObject_GC_New(PyExecutionContext, &PyExecutionContext_Type);
 }
 
 
@@ -1015,7 +1074,7 @@ exec_context_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         return NULL;
     }
 
-    o = PyObject_GC_New(PyExecutionContext, &PyExecutionContext_Type);
+    o = _exec_context_new();
     if (o == NULL) {
         Py_DECREF(items);
         return NULL;
@@ -1039,14 +1098,14 @@ PyExecutionContext_New(void)
 }
 
 
-static PyExecutionContext *
+static inline PyExecutionContext *
 exec_context_link(PyExecutionContext *link_to)  /* returns new ref */
 {
     PyExecutionContext *o;
 
     assert(PyExecutionContext_CheckExact(link_to));
 
-    o = PyObject_GC_New(PyExecutionContext, &PyExecutionContext_Type);
+    o = _exec_context_new();
     if (o == NULL) {
         return NULL;
     }

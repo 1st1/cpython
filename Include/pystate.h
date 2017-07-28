@@ -365,6 +365,9 @@ PyAPI_FUNC(int) PyExecutionContext_SetItem(PyExecutionContext *,
                                            PyObject *, PyObject *);
 PyAPI_FUNC(int) PyExecutionContext_GetItem(PyExecutionContext *,
                                            PyObject *, PyObject **);
+
+int PyExecutionContext_ClearFreeLists(void);
+void PyExecutionContext_Fini(void);
 #endif
 
 #ifdef __cplusplus
