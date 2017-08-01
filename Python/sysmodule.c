@@ -1366,30 +1366,31 @@ sys_getandroidapilevel(PyObject *self)
 static PyObject *
 sys_get_execution_context(PyObject *self)
 {
-    PyExecutionContext *ctx;
+    // PyExecutionContext *ctx;
 
-    if (PyExecutionContext_Get(&ctx)) {
-        return NULL;
-    }
+    // if (PyExecutionContext_Get(&ctx)) {
+    //     return NULL;
+    // }
 
-    if (ctx == NULL) {
-        Py_RETURN_NONE;
-    }
+    // if (ctx == NULL) {
+    //     Py_RETURN_NONE;
+    // }
 
-    return (PyObject *)ctx;
+    // return (PyObject *)ctx;
+    Py_RETURN_NONE;
 }
 
 
 static PyObject *
 sys_set_execution_context(PyObject *self, PyObject *ctx)
 {
-    if (ctx == Py_None) {
-        ctx = NULL;
-    }
+    // if (ctx == Py_None) {
+    //     ctx = NULL;
+    // }
 
-    if (PyExecutionContext_Set((PyExecutionContext*)ctx)) {
-        return NULL;
-    }
+    // if (PyExecutionContext_Set((PyExecutionContext*)ctx)) {
+    //     return NULL;
+    // }
 
     Py_RETURN_NONE;
 }
@@ -1398,24 +1399,24 @@ sys_set_execution_context(PyObject *self, PyObject *ctx)
 static PyObject *
 sys_set_execution_context_value(PyObject *self, PyObject *args)
 {
-    PyThreadState *tstate = PyThreadState_GET();
-    PyObject *key, *value;
+    // PyThreadState *tstate = PyThreadState_GET();
+    // PyObject *key, *value;
 
-    if (!PyArg_ParseTuple(args, "OO:set_execution_context_value",
-                          &key, &value)) {
-        return NULL;
-    }
+    // if (!PyArg_ParseTuple(args, "OO:set_execution_context_value",
+    //                       &key, &value)) {
+    //     return NULL;
+    // }
 
-    if (tstate->exec_context == NULL) {
-        tstate->exec_context = PyExecutionContext_New();
-        if (tstate->exec_context == NULL) {
-            return NULL;
-        }
-    }
+    // if (tstate->exec_context == NULL) {
+    //     tstate->exec_context = PyExecutionContext_New();
+    //     if (tstate->exec_context == NULL) {
+    //         return NULL;
+    //     }
+    // }
 
-    if (PyExecutionContext_SetItem(tstate->exec_context, key, value)) {
-        return NULL;
-    }
+    // if (PyExecutionContext_SetItem(tstate->exec_context, key, value)) {
+    //     return NULL;
+    // }
 
     Py_RETURN_NONE;
 }
@@ -1423,36 +1424,38 @@ sys_set_execution_context_value(PyObject *self, PyObject *args)
 static PyObject *
 sys_get_execution_context_value(PyObject *self, PyObject *args)
 {
-    PyThreadState *tstate = PyThreadState_GET();
-    PyObject *value;
-    PyObject *key;
-    PyObject *def = NULL;
+    // PyThreadState *tstate = PyThreadState_GET();
+    // PyObject *value;
+    // PyObject *key;
+    // PyObject *def = NULL;
 
-    if (!PyArg_UnpackTuple(args, "get_execution_context_value",
-                           1, 2, &key, &def))
-    {
-        return NULL;
-    }
+    // if (!PyArg_UnpackTuple(args, "get_execution_context_value",
+    //                        1, 2, &key, &def))
+    // {
+    //     return NULL;
+    // }
 
-    if (tstate->exec_context == NULL ||
-            PyExecutionContext_GetItem(tstate->exec_context, key, &value))
-    {
-        if (def != NULL) {
-            Py_INCREF(def);
-            return def;
-        }
-        else {
-            value = PyTuple_Pack(1, key);
-            if (!value) {
-                return NULL;
-            }
-            PyErr_SetObject(PyExc_LookupError, value);
-            Py_DECREF(value);
-            return NULL;
-        }
-    }
+    // if (tstate->exec_context == NULL ||
+    //         PyExecutionContext_GetItem(tstate->exec_context, key, &value))
+    // {
+    //     if (def != NULL) {
+    //         Py_INCREF(def);
+    //         return def;
+    //     }
+    //     else {
+    //         value = PyTuple_Pack(1, key);
+    //         if (!value) {
+    //             return NULL;
+    //         }
+    //         PyErr_SetObject(PyExc_LookupError, value);
+    //         Py_DECREF(value);
+    //         return NULL;
+    //     }
+    // }
 
-    return value;
+    // return value;
+
+    Py_RETURN_NONE;
 }
 
 

@@ -657,7 +657,6 @@ clone_dict(PyObject *s)
 
     new = (PyDictObject *)new_dict(keys, NULL);
     new->ma_used = ms->ma_used;
-    assert(_PyDict_CheckConsistency(new));
     _PyObject_GC_TRACK(new);
     return (PyObject *)new;
 }

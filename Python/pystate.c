@@ -977,350 +977,350 @@ PyGILState_Release(PyGILState_STATE oldstate)
 /* Execution Context */
 
 
-#ifndef PyExecutionContext_MAXFREELIST
-#define PyExecutionContext_MAXFREELIST 80
-#endif
-
-
-static PyExecutionContext
-    *exec_context_freelist[PyExecutionContext_MAXFREELIST];
-static int exec_context_freelist_free = 0;
-
-
-int
-PyExecutionContext_ClearFreeLists(void)
-{
-    int ret = exec_context_freelist_free;
-
-    while (exec_context_freelist_free) {
-        PyExecutionContext *o;
-        o = exec_context_freelist[--exec_context_freelist_free];
-        assert(PyExecutionContext_CheckExact(o));
-        PyObject_GC_Del(o);
-    }
-
-    return ret;
-}
-
-
-void
-PyExecutionContext_Fini(void)
-{
-    (void)PyExecutionContext_ClearFreeLists();
-}
-
-
-static void
-exec_context_dealloc(PyExecutionContext *ctx)
-{
-    _PyObject_GC_UNTRACK((PyObject *)ctx);
-
-    Py_CLEAR(ctx->ec_items);
-    Py_CLEAR(ctx->ec_prev);
-    ctx->ec_copy_on_write = 0;
-
-    if (exec_context_freelist_free < PyExecutionContext_MAXFREELIST) {
-        assert(PyExecutionContext_CheckExact(ctx));
-        exec_context_freelist[exec_context_freelist_free++] = ctx;
-    }
-    else {
-        PyObject_GC_Del(ctx);
-    }
-}
-
-
-static int
-exec_context_traverse(PyExecutionContext *ctx, visitproc visit, void *arg)
-{
-    Py_VISIT(ctx->ec_items);
-    Py_VISIT(ctx->ec_prev);
-    return 0;
-}
-
-
-static inline PyExecutionContext *
-_exec_context_new(void)
-{
-    PyExecutionContext *ctx;
-
-    if (exec_context_freelist_free) {
-        exec_context_freelist_free--;
-        ctx = exec_context_freelist[exec_context_freelist_free];
-        assert(PyExecutionContext_CheckExact(ctx));
-        _Py_NewReference((PyObject *)ctx);
-        return ctx;
-    }
-
-    return PyObject_GC_New(PyExecutionContext, &PyExecutionContext_Type);
-}
-
-
-static PyObject *
-exec_context_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-    PyExecutionContext *o;
-    PyObject *items;
-
-    if ((args != NULL && PyTuple_GET_SIZE(args)) ||
-            (kwds != NULL && PyDict_GET_SIZE(kwds)))
-    {
-        PyErr_SetString(
-            PyExc_ValueError, "sys.ExecutionContext doesn't accept arguments");
-        return NULL;
-    }
-
-    items = PyDict_New();
-    if (items == NULL) {
-        return NULL;
-    }
-
-    o = _exec_context_new();
-    if (o == NULL) {
-        Py_DECREF(items);
-        return NULL;
-    }
-
-    o->ec_items = items;  /* borrow ref */
+// #ifndef PyExecutionContext_MAXFREELIST
+// #define PyExecutionContext_MAXFREELIST 80
+// #endif
+
+
+// static PyExecutionContext
+//     *exec_context_freelist[PyExecutionContext_MAXFREELIST];
+// static int exec_context_freelist_free = 0;
+
+
+// int
+// PyExecutionContext_ClearFreeLists(void)
+// {
+//     int ret = exec_context_freelist_free;
+
+//     while (exec_context_freelist_free) {
+//         PyExecutionContext *o;
+//         o = exec_context_freelist[--exec_context_freelist_free];
+//         assert(PyExecutionContext_CheckExact(o));
+//         PyObject_GC_Del(o);
+//     }
+
+//     return ret;
+// }
+
+
+// void
+// PyExecutionContext_Fini(void)
+// {
+//     (void)PyExecutionContext_ClearFreeLists();
+// }
+
+
+// static void
+// exec_context_dealloc(PyExecutionContext *ctx)
+// {
+//     _PyObject_GC_UNTRACK((PyObject *)ctx);
+
+//     Py_CLEAR(ctx->ec_items);
+//     Py_CLEAR(ctx->ec_prev);
+//     ctx->ec_copy_on_write = 0;
+
+//     if (exec_context_freelist_free < PyExecutionContext_MAXFREELIST) {
+//         assert(PyExecutionContext_CheckExact(ctx));
+//         exec_context_freelist[exec_context_freelist_free++] = ctx;
+//     }
+//     else {
+//         PyObject_GC_Del(ctx);
+//     }
+// }
+
+
+// static int
+// exec_context_traverse(PyExecutionContext *ctx, visitproc visit, void *arg)
+// {
+//     Py_VISIT(ctx->ec_items);
+//     Py_VISIT(ctx->ec_prev);
+//     return 0;
+// }
+
+
+// static inline PyExecutionContext *
+// _exec_context_new(void)
+// {
+//     PyExecutionContext *ctx;
+
+//     if (exec_context_freelist_free) {
+//         exec_context_freelist_free--;
+//         ctx = exec_context_freelist[exec_context_freelist_free];
+//         assert(PyExecutionContext_CheckExact(ctx));
+//         _Py_NewReference((PyObject *)ctx);
+//         return ctx;
+//     }
+
+//     return PyObject_GC_New(PyExecutionContext, &PyExecutionContext_Type);
+// }
+
+
+// static PyObject *
+// exec_context_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+// {
+//     PyExecutionContext *o;
+//     PyObject *items;
+
+//     if ((args != NULL && PyTuple_GET_SIZE(args)) ||
+//             (kwds != NULL && PyDict_GET_SIZE(kwds)))
+//     {
+//         PyErr_SetString(
+//             PyExc_ValueError, "sys.ExecutionContext doesn't accept arguments");
+//         return NULL;
+//     }
+
+//     items = PyDict_New();
+//     if (items == NULL) {
+//         return NULL;
+//     }
+
+//     o = _exec_context_new();
+//     if (o == NULL) {
+//         Py_DECREF(items);
+//         return NULL;
+//     }
+
+//     o->ec_items = items;  /* borrow ref */
 
-    o->ec_copy_on_write = 0;
-    o->ec_prev = NULL;
-
-    _PyObject_GC_TRACK((PyObject*)o);
-    return (PyObject*)o;
-}
+//     o->ec_copy_on_write = 0;
+//     o->ec_prev = NULL;
+
+//     _PyObject_GC_TRACK((PyObject*)o);
+//     return (PyObject*)o;
+// }
 
 
-PyExecutionContext *
-PyExecutionContext_New(void)
-{
-    return (PyExecutionContext*)exec_context_new(
-        &PyExecutionContext_Type, NULL, NULL);
-}
+// PyExecutionContext *
+// PyExecutionContext_New(void)
+// {
+//     return (PyExecutionContext*)exec_context_new(
+//         &PyExecutionContext_Type, NULL, NULL);
+// }
 
 
-static inline PyExecutionContext *
-exec_context_link(PyExecutionContext *link_to)  /* returns new ref */
-{
-    PyExecutionContext *o;
-
-    assert(PyExecutionContext_CheckExact(link_to));
-
-    o = _exec_context_new();
-    if (o == NULL) {
-        return NULL;
-    }
-
-    o->ec_copy_on_write = 1;
-    o->ec_items = NULL;
-
-    if (link_to->ec_copy_on_write) {
-        Py_INCREF(link_to->ec_prev);
-        o->ec_prev = link_to->ec_prev;
-    }
-    else {
-        Py_INCREF(link_to);
-        o->ec_prev = link_to;
-    }
-
-    _PyObject_GC_TRACK((PyObject*)o);
-    return o;
-}
-
-
-int
-_PyExecutionContext_Fork(PyExecutionContext **forked)
-{
-    PyThreadState *tstate = PyThreadState_GET();
-    if (tstate == NULL || tstate->exec_context == NULL) {
-        *forked = NULL;
-        return 0;
-    }
-
-    *forked = exec_context_link(tstate->exec_context);
-    return (*forked == NULL) ? -1 : 0;
-}
-
-
-int
-PyExecutionContext_SetItem(PyExecutionContext* ctx, PyObject *key,
-                           PyObject *val)
-{
-    if (ctx->ec_copy_on_write) {
-        assert(ctx->ec_items == NULL);
-        assert(ctx->ec_prev != NULL);
-        assert(ctx->ec_prev->ec_copy_on_write == 0);
-        assert(ctx->ec_prev->ec_items != NULL);
-
-        ctx->ec_items = PyDict_Copy(ctx->ec_prev->ec_items);
-        if (ctx->ec_items == NULL) {
-            return -1;
-        }
-
-        ctx->ec_copy_on_write = 0;
-        Py_CLEAR(ctx->ec_prev);
-    }
-
-    assert(ctx->ec_items != NULL);
-    assert(ctx->ec_prev == NULL);
-
-    if (PyDict_SetItem(ctx->ec_items, key, val)) {
-        return -1;
-    }
-
-    return 0;
-}
-
-
-static PyObject *
-exec_context_setitem(PyExecutionContext* self, PyObject *args)
-{
-    PyObject *key;
-    PyObject *val;
-
-    if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
-        return NULL;
-    }
-
-    if (PyExecutionContext_SetItem(self, key, val)) {
-        return NULL;
-    }
-
-    Py_RETURN_NONE;
-}
-
-
-int
-PyExecutionContext_GetItem(PyExecutionContext *ctx, PyObject *key,
-                           PyObject **result)
-{
-    PyObject *val;
-    PyExecutionContext *base;
-
-    if (ctx->ec_copy_on_write) {
-        assert(ctx->ec_items == NULL);
-        base = ctx->ec_prev;
-    }
-    else {
-        base = ctx;
-    }
-
-    assert(base != NULL);
-
-    val = PyDict_GetItem(base->ec_items, key);
-    if (val) {
-        Py_INCREF(val);
-        *result = val;
-        return 0;
-    }
-
-    return -1;
-}
-
-
-static PyObject *
-exec_context_getitem(PyExecutionContext* self, PyObject *args)
-{
-    PyObject *key;
-    PyObject *def = NULL;
-    PyObject *result;
-
-    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
-        return NULL;
-    }
-
-    if (PyExecutionContext_GetItem(self, key, &result)) {
-        if (def != NULL) {
-            Py_INCREF(def);
-            return def;
-        }
-        else {
-            Py_RETURN_NONE;
-        }
-    }
-    else {
-        return result;
-    }
-}
-
-
-static PyObject *
-exec_context_run(PyExecutionContext* self, PyObject *obj)
-{
-    PyThreadState *tstate = PyThreadState_GET();
-    PyExecutionContext *old_ctx;
-    PyObject *result;
-
-    old_ctx = tstate->exec_context;
-    Py_INCREF(self);
-    tstate->exec_context = self;
-
-    result = PyObject_CallObject(obj, NULL);
-
-    Py_XDECREF(tstate->exec_context);
-    tstate->exec_context = old_ctx;
-
-    return result;
-}
-
-
-int
-PyExecutionContext_SET(PyExecutionContext *ctx)
-{
-    PyThreadState *tstate = PyThreadState_GET();
-
-    if (ctx == NULL) {
-        Py_CLEAR(tstate->exec_context);
-    }
-    else {
-        if (PyExecutionContext_CheckExact(ctx)) {
-            Py_CLEAR(tstate->exec_context);
-            Py_INCREF(ctx);
-            tstate->exec_context = ctx;
-        }
-        else {
-            PyErr_SetString(PyExc_TypeError,
-                            "an ExecutionContext was expected");
-            return -1;
-        }
-    }
-
-    return 0;
-}
-
-
-int
-PyExecutionContext_Set(PyExecutionContext *ctx)
-{
-    return PyExecutionContext_SET(ctx);
-}
-
-
-int
-PyExecutionContext_Get(PyExecutionContext **ctx)
-{
-    return _PyExecutionContext_Fork(ctx);
-}
-
-
-static PyMethodDef PyExecutionContext_methods[] = {
-    {"set",(PyCFunction)exec_context_setitem, METH_VARARGS, NULL},
-    {"get",(PyCFunction)exec_context_getitem, METH_VARARGS, NULL},
-    {"run",(PyCFunction)exec_context_run, METH_O, NULL},
-    {NULL, NULL}        /* Sentinel */
-};
-
-
-PyTypeObject PyExecutionContext_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "sys.ExecutionContext",
-    sizeof(PyExecutionContext),
-    .tp_methods = PyExecutionContext_methods,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .tp_getattro = PyObject_GenericGetAttr,
-    .tp_new = exec_context_new,
-    .tp_dealloc = (destructor)exec_context_dealloc,
-    .tp_traverse = (traverseproc)exec_context_traverse,
-};
+// static inline PyExecutionContext *
+// exec_context_link(PyExecutionContext *link_to)  /* returns new ref */
+// {
+//     PyExecutionContext *o;
+
+//     assert(PyExecutionContext_CheckExact(link_to));
+
+//     o = _exec_context_new();
+//     if (o == NULL) {
+//         return NULL;
+//     }
+
+//     o->ec_copy_on_write = 1;
+//     o->ec_items = NULL;
+
+//     if (link_to->ec_copy_on_write) {
+//         Py_INCREF(link_to->ec_prev);
+//         o->ec_prev = link_to->ec_prev;
+//     }
+//     else {
+//         Py_INCREF(link_to);
+//         o->ec_prev = link_to;
+//     }
+
+//     _PyObject_GC_TRACK((PyObject*)o);
+//     return o;
+// }
+
+
+// int
+// _PyExecutionContext_Fork(PyExecutionContext **forked)
+// {
+//     PyThreadState *tstate = PyThreadState_GET();
+//     if (tstate == NULL || tstate->exec_context == NULL) {
+//         *forked = NULL;
+//         return 0;
+//     }
+
+//     *forked = exec_context_link(tstate->exec_context);
+//     return (*forked == NULL) ? -1 : 0;
+// }
+
+
+// int
+// PyExecutionContext_SetItem(PyExecutionContext* ctx, PyObject *key,
+//                            PyObject *val)
+// {
+//     if (ctx->ec_copy_on_write) {
+//         assert(ctx->ec_items == NULL);
+//         assert(ctx->ec_prev != NULL);
+//         assert(ctx->ec_prev->ec_copy_on_write == 0);
+//         assert(ctx->ec_prev->ec_items != NULL);
+
+//         ctx->ec_items = PyDict_Copy(ctx->ec_prev->ec_items);
+//         if (ctx->ec_items == NULL) {
+//             return -1;
+//         }
+
+//         ctx->ec_copy_on_write = 0;
+//         Py_CLEAR(ctx->ec_prev);
+//     }
+
+//     assert(ctx->ec_items != NULL);
+//     assert(ctx->ec_prev == NULL);
+
+//     if (PyDict_SetItem(ctx->ec_items, key, val)) {
+//         return -1;
+//     }
+
+//     return 0;
+// }
+
+
+// static PyObject *
+// exec_context_setitem(PyExecutionContext* self, PyObject *args)
+// {
+//     PyObject *key;
+//     PyObject *val;
+
+//     if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
+//         return NULL;
+//     }
+
+//     if (PyExecutionContext_SetItem(self, key, val)) {
+//         return NULL;
+//     }
+
+//     Py_RETURN_NONE;
+// }
+
+
+// int
+// PyExecutionContext_GetItem(PyExecutionContext *ctx, PyObject *key,
+//                            PyObject **result)
+// {
+//     PyObject *val;
+//     PyExecutionContext *base;
+
+//     if (ctx->ec_copy_on_write) {
+//         assert(ctx->ec_items == NULL);
+//         base = ctx->ec_prev;
+//     }
+//     else {
+//         base = ctx;
+//     }
+
+//     assert(base != NULL);
+
+//     val = PyDict_GetItem(base->ec_items, key);
+//     if (val) {
+//         Py_INCREF(val);
+//         *result = val;
+//         return 0;
+//     }
+
+//     return -1;
+// }
+
+
+// static PyObject *
+// exec_context_getitem(PyExecutionContext* self, PyObject *args)
+// {
+//     PyObject *key;
+//     PyObject *def = NULL;
+//     PyObject *result;
+
+//     if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
+//         return NULL;
+//     }
+
+//     if (PyExecutionContext_GetItem(self, key, &result)) {
+//         if (def != NULL) {
+//             Py_INCREF(def);
+//             return def;
+//         }
+//         else {
+//             Py_RETURN_NONE;
+//         }
+//     }
+//     else {
+//         return result;
+//     }
+// }
+
+
+// static PyObject *
+// exec_context_run(PyExecutionContext* self, PyObject *obj)
+// {
+//     PyThreadState *tstate = PyThreadState_GET();
+//     PyExecutionContext *old_ctx;
+//     PyObject *result;
+
+//     old_ctx = tstate->exec_context;
+//     Py_INCREF(self);
+//     tstate->exec_context = self;
+
+//     result = PyObject_CallObject(obj, NULL);
+
+//     Py_XDECREF(tstate->exec_context);
+//     tstate->exec_context = old_ctx;
+
+//     return result;
+// }
+
+
+// int
+// PyExecutionContext_SET(PyExecutionContext *ctx)
+// {
+//     PyThreadState *tstate = PyThreadState_GET();
+
+//     if (ctx == NULL) {
+//         Py_CLEAR(tstate->exec_context);
+//     }
+//     else {
+//         if (PyExecutionContext_CheckExact(ctx)) {
+//             Py_CLEAR(tstate->exec_context);
+//             Py_INCREF(ctx);
+//             tstate->exec_context = ctx;
+//         }
+//         else {
+//             PyErr_SetString(PyExc_TypeError,
+//                             "an ExecutionContext was expected");
+//             return -1;
+//         }
+//     }
+
+//     return 0;
+// }
+
+
+// int
+// PyExecutionContext_Set(PyExecutionContext *ctx)
+// {
+//     return PyExecutionContext_SET(ctx);
+// }
+
+
+// int
+// PyExecutionContext_Get(PyExecutionContext **ctx)
+// {
+//     return _PyExecutionContext_Fork(ctx);
+// }
+
+
+// static PyMethodDef PyExecutionContext_methods[] = {
+//     {"set",(PyCFunction)exec_context_setitem, METH_VARARGS, NULL},
+//     {"get",(PyCFunction)exec_context_getitem, METH_VARARGS, NULL},
+//     {"run",(PyCFunction)exec_context_run, METH_O, NULL},
+//     {NULL, NULL}        /* Sentinel */
+// };
+
+
+// PyTypeObject PyExecutionContext_Type = {
+//     PyVarObject_HEAD_INIT(NULL, 0)
+//     "sys.ExecutionContext",
+//     sizeof(PyExecutionContext),
+//     .tp_methods = PyExecutionContext_methods,
+//     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+//     .tp_getattro = PyObject_GenericGetAttr,
+//     .tp_new = exec_context_new,
+//     .tp_dealloc = (destructor)exec_context_dealloc,
+//     .tp_traverse = (traverseproc)exec_context_traverse,
+// };
 
 
 #endif /* WITH_THREAD */

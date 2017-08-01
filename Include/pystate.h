@@ -104,7 +104,7 @@ typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 #endif
 
 
-typedef struct _execcontextobject PyExecutionContext;
+typedef struct _execcontextdata _PyExecutionContextData;
 
 
 #ifdef Py_LIMITED_API
@@ -184,7 +184,8 @@ typedef struct _ts {
     PyObject *async_gen_firstiter;
     PyObject *async_gen_finalizer;
 
-    PyExecutionContext *exec_context;
+    _PyExecutionContextData *exec_context;
+    int exec_context_cow;
 
     /* XXX signal handlers should also be here */
 
@@ -352,23 +353,23 @@ typedef struct _frame *(*PyThreadFrameGetter)(PyThreadState *self_);
 PyAPI_DATA(PyThreadFrameGetter) _PyThreadState_GetFrame;
 #endif
 
-#ifndef Py_LIMITED_API
-PyAPI_DATA(PyTypeObject) PyExecutionContext_Type;
+// #ifndef Py_LIMITED_API
+// PyAPI_DATA(PyTypeObject) PyExecutionContext_Type;
 
-#define PyExecutionContext_CheckExact(op) \
-    (Py_TYPE(op) == &PyExecutionContext_Type)
+// #define PyExecutionContext_CheckExact(op) \
+//     (Py_TYPE(op) == &PyExecutionContext_Type)
 
-PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_New(void);
-PyAPI_FUNC(int) PyExecutionContext_Set(PyExecutionContext *);
-PyAPI_FUNC(int) PyExecutionContext_Get(PyExecutionContext **);
-PyAPI_FUNC(int) PyExecutionContext_SetItem(PyExecutionContext *,
-                                           PyObject *, PyObject *);
-PyAPI_FUNC(int) PyExecutionContext_GetItem(PyExecutionContext *,
-                                           PyObject *, PyObject **);
+// PyAPI_FUNC(PyExecutionContext *) PyExecutionContext_New(void);
+// PyAPI_FUNC(int) PyExecutionContext_Set(PyExecutionContext *);
+// PyAPI_FUNC(int) PyExecutionContext_Get(PyExecutionContext **);
+// PyAPI_FUNC(int) PyExecutionContext_SetItem(PyExecutionContext *,
+//                                            PyObject *, PyObject *);
+// PyAPI_FUNC(int) PyExecutionContext_GetItem(PyExecutionContext *,
+//                                            PyObject *, PyObject **);
 
-int PyExecutionContext_ClearFreeLists(void);
-void PyExecutionContext_Fini(void);
-#endif
+// int PyExecutionContext_ClearFreeLists(void);
+// void PyExecutionContext_Fini(void);
+// #endif
 
 #ifdef __cplusplus
 }
