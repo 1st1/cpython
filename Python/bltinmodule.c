@@ -2718,6 +2718,7 @@ _PyBuiltin_Init(void)
     SETBUILTIN("classmethod",           &PyClassMethod_Type);
     SETBUILTIN("complex",               &PyComplex_Type);
     SETBUILTIN("dict",                  &PyDict_Type);
+    SETBUILTIN("hamt",                  &PyHamt_Type);
     SETBUILTIN("enumerate",             &PyEnum_Type);
     SETBUILTIN("filter",                &PyFilter_Type);
     SETBUILTIN("float",                 &PyFloat_Type);

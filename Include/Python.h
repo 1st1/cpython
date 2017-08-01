@@ -104,6 +104,7 @@
 #include "weakrefobject.h"
 #include "structseq.h"
 #include "namespaceobject.h"
+#include "hamtobject.h"
 
 #include "codecs.h"
 #include "pyerrors.h"

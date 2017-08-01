@@ -395,6 +395,7 @@ OBJECT_OBJS=	\
 		Objects/listobject.o \
 		Objects/longobject.o \
 		Objects/dictobject.o \
+		Objects/hamtobject.o \
 		Objects/odictobject.o \
 		Objects/memoryobject.o \
 		Objects/methodobject.o \
@@ -926,6 +927,7 @@ PYTHON_HEADERS= \
 		$(srcdir)/Include/floatobject.h \
 		$(srcdir)/Include/frameobject.h \
 		$(srcdir)/Include/funcobject.h \
+		$(srcdir)/Include/hamtobject.h \
 		$(srcdir)/Include/genobject.h \
 		$(srcdir)/Include/import.h \
 		$(srcdir)/Include/intrcheck.h \

@@ -1686,6 +1686,9 @@ _Py_ReadyTypes(void)
     if (PyType_Ready(&PyDict_Type) < 0)
         Py_FatalError("Can't initialize dict type");
 
+    if (PyType_Ready(&PyHamt_Type) < 0)
+        Py_FatalError("Can't initialize hamt type");
+
     if (PyType_Ready(&PyDictKeys_Type) < 0)
         Py_FatalError("Can't initialize dict keys type");
 
