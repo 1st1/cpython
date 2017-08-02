@@ -37,6 +37,7 @@ hamt_hash(PyObject *o)
     Py_hash_t hash = PyObject_Hash(o);
 
     if (hash == -1) {
+        /* exception */
         return -1;
     }
 
@@ -362,7 +363,7 @@ hamt_node_bitmap_find(PyHamtNode_Bitmap *self,
     if (key_or_null == NULL) {
         assert(val_or_node != NULL);
         return hamt_node_find((_PyHamtNode_BaseNode *)val_or_node,
-                              shift +4, hash, key, val);
+                              shift + 5, hash, key, val);
     }
 
     assert(key != NULL);
@@ -429,7 +430,7 @@ hamt_node_bitmap_dump(PyHamtNode_Bitmap *node,
         goto error;
     }
 
-    tmp1 = PyLong_FromLong(node->b_bitmap);
+    tmp1 = PyLong_FromLong((uint32_t)node->b_bitmap);
     if (tmp1 == NULL) {
         goto error;
     }
