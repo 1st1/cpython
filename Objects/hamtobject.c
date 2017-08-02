@@ -2,7 +2,13 @@
 #include "Python.h"
 
 
-static PyHamtObject * _hamt_new(void);
+static PyHamtObject *
+_hamt_new(void);
+
+static _PyHamtNode_BaseNode *
+hamt_node_assoc(_PyHamtNode_BaseNode *node,
+                int32_t shift, int32_t hash,
+                PyObject *key, PyObject *val, bool* added_leaf);
 
 
 /* Returns -1 on error */
@@ -70,34 +76,101 @@ hamt_node_bitmap_new(Py_ssize_t size)
 }
 
 
+static PyHamtNode_Bitmap *
+hamt_node_bitmap_clone(PyHamtNode_Bitmap *o)
+{
+    PyHamtNode_Bitmap *clone;
+    Py_ssize_t i;
+
+    clone = (PyHamtNode_Bitmap *)hamt_node_bitmap_new(Py_SIZE(o));
+    if (clone == NULL) {
+        return NULL;
+    }
+
+    for (i = 0; i < Py_SIZE(o); i++) {
+        Py_INCREF(o->b_array[i]);
+        clone->b_array[i] = o->b_array[i];
+    }
+
+    return clone;
+}
+
+
+static PyHamtNode_Bitmap *
+hamt_node_bitmap_clone_and_set(PyHamtNode_Bitmap *o,
+                               int32_t idx, PyObject *val)
+{
+    PyHamtNode_Bitmap *new_node;
+
+    new_node = hamt_node_bitmap_clone(o);
+    if (new_node == NULL) {
+        return NULL;
+    }
+
+    Py_DECREF(new_node->b_array[idx]);
+    Py_XINCREF(val);
+    new_node->b_array[idx] = val;
+    return new_node;
+
+}
+
+
 static _PyHamtNode_BaseNode *
 hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
                        int32_t shift, int32_t hash,
                        PyObject *key, PyObject *val, bool* added_leaf)
 {
     int32_t bit = hamt_bitpos(hash, shift);
-    int32_t idx = hamt_bitindex(node->b_bitmap, bit);
+    int32_t idx = hamt_bitindex(self->b_bitmap, bit);
+    _PyHamtNode_BaseNode *ret;
+    int comp_err;
 
     assert(idx >= 0);
 
     if ((self->b_bitmap & bit) !=0) {
-        PyObject *key_or_null = self->b_array[2 * idx];
-        PyObject *val_or_node = self->b_array[2 * idx + 1];
+        int32_t key_idx = 2 * idx;
+        int32_t val_idx = key_idx + 1;
+
+        PyObject *key_or_null = self->b_array[key_idx];
+        PyObject *val_or_node = self->b_array[val_idx];
 
         if (key_or_null == NULL) {
-            _PyHamtNode_BaseNode *new_node;
-            new_node = hamt_assoc(
-                val_or_node, shift + 5, hash, key, val, added_leaf);
+            _PyHamtNode_BaseNode *n;
+            n = hamt_node_assoc(
+                (_PyHamtNode_BaseNode *)val_or_node,
+                shift + 5, hash, key, val, added_leaf);
 
-            if (new_node == NULL) {
+            if (n == NULL) {
                 return NULL;
             }
 
-            if (val_or_node == new_node) {
+            if (val_or_node == (PyObject *)n) {
+                Py_DECREF(n);
                 Py_INCREF(self);
-                return self;
+                return (_PyHamtNode_BaseNode *)self;
             }
+
+            ret = (_PyHamtNode_BaseNode *)hamt_node_bitmap_clone_and_set(
+                self, val_idx, (PyObject *)n);
+            Py_DECREF(n);
+            return ret;
         }
+
+        comp_err = PyObject_RichCompareBool(key, key_or_null, Py_EQ);
+        if (comp_err < 0) {
+            return NULL;
+        }
+        if (comp_err) {  /* key != key_or_null */
+            if (val == val_or_node) {
+                Py_INCREF(self);
+                return (_PyHamtNode_BaseNode *)self;
+            }
+
+            return (_PyHamtNode_BaseNode *)hamt_node_bitmap_clone_and_set(
+                self, val_idx, val);
+        }
+
+        *added_leaf = true;
     }
 
     return NULL;
@@ -136,7 +209,28 @@ hamt_node_bitmap_dealloc(PyHamtNode_Bitmap *self)
 }
 
 
+/////////////////////////////////// Node Dispatch
+
+
+static _PyHamtNode_BaseNode *
+hamt_node_assoc(_PyHamtNode_BaseNode *node,
+                int32_t shift, int32_t hash,
+                PyObject *key, PyObject *val, bool* added_leaf)
+{
+    switch (node->base_type) {
+        case Bitmap:
+            return hamt_node_bitmap_assoc(
+                (PyHamtNode_Bitmap *)node,
+                shift, hash, key, val, added_leaf);
+
+        default:
+            assert(0);
+    }
+}
+
+
 /////////////////////////////////// Hamt Object
+
 
 
 static PyHamtObject *
@@ -152,16 +246,9 @@ hamt_assoc(PyHamtObject *o, PyObject *key, PyObject *val)
         return NULL;
     }
 
-    switch (o->h_root->base_type) {
-        case Bitmap:
-            new_root = hamt_node_bitmap_assoc(
-                (PyHamtNode_Bitmap *)o->h_root,
-                0, key_hash, key, val, &added_leaf);
-            break;
-
-        default:
-            assert(0);
-    }
+    new_root = hamt_node_assoc(
+        (_PyHamtNode_BaseNode *)(o->h_root),
+        0, key_hash, key, val, &added_leaf);
 
     if (new_root == NULL) {
         return NULL;
