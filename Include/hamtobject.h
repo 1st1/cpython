@@ -32,6 +32,8 @@ typedef struct {
 
 typedef struct {
     _PyHAMT_HEAD(c)
+    int32_t c_hash;
+    PyObject *c_array[1];
 } PyHamtNode_Collision;
 
 
