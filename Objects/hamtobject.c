@@ -2,6 +2,9 @@
 #include "Python.h"
 
 
+typedef enum {ERROR = -1, NOT_FOUND = 0, FOUND = 1} hamt_find_t;
+
+
 static PyHamtNode_Bitmap *_empty_bitmap_node;
 
 
@@ -12,6 +15,11 @@ static _PyHamtNode_BaseNode *
 hamt_node_assoc(_PyHamtNode_BaseNode *node,
                 int32_t shift, int32_t hash,
                 PyObject *key, PyObject *val, bool* added_leaf);
+
+static hamt_find_t
+hamt_node_find(_PyHamtNode_BaseNode *node,
+               int32_t shift, int32_t hash,
+               PyObject *key, PyObject **val);
 
 static _PyHamtNode_BaseNode *
 hamt_node_create(int32_t shift, PyObject *key1, PyObject *val1,
@@ -167,6 +175,8 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
         PyObject *val_or_node = self->b_array[val_idx];
 
         if (key_or_null == NULL) {
+            assert(val_or_node != NULL);
+
             n = hamt_node_assoc(
                 (_PyHamtNode_BaseNode *)val_or_node,
                 shift + 5, hash, key, val, added_leaf);
@@ -256,6 +266,52 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
 }
 
 
+static hamt_find_t
+hamt_node_bitmap_find(PyHamtNode_Bitmap *self,
+                      int32_t shift, int32_t hash,
+                      PyObject *key, PyObject **val)
+{
+    int32_t bit = hamt_bitpos(hash, shift);
+    int32_t idx;
+    int32_t key_idx;
+    int32_t val_idx;
+    PyObject *key_or_null;
+    PyObject *val_or_node;
+    int comp_err;
+
+    if ((self->b_bitmap & bit) == 0) {
+        return NOT_FOUND;
+    }
+
+    idx = hamt_bitindex(self->b_bitmap, bit);
+    assert(idx >= 0);
+    key_idx = idx * 2;
+    val_idx = key_idx + 1;
+
+    assert(val_idx < Py_SIZE(self));
+
+    key_or_null = self->b_array[key_idx];
+    val_or_node = self->b_array[val_idx];
+
+    if (key_or_null == NULL) {
+        assert(val_or_node != NULL);
+        return hamt_node_find((_PyHamtNode_BaseNode *)val_or_node,
+                              shift +4, hash, key, val);
+    }
+
+    comp_err = PyObject_RichCompareBool(key, key_or_null, Py_EQ);
+    if (comp_err < 0) {  /* exception in __eq__ */
+        return ERROR;
+    }
+    if (comp_err == 1) {  /* key == key_or_null */
+        *val = val_or_node;
+        return FOUND;
+    }
+
+    return NOT_FOUND;
+}
+
+
 static int
 hamt_node_bitmap_traverse(PyHamtNode_Bitmap *self, visitproc visit, void *arg)
 {
@@ -298,10 +354,23 @@ hamt_node_assoc(_PyHamtNode_BaseNode *node,
 {
     switch (node->base_type) {
         case Bitmap:
-            return hamt_node_bitmap_assoc(
-                (PyHamtNode_Bitmap *)node,
-                shift, hash, key, val, added_leaf);
+            return hamt_node_bitmap_assoc((PyHamtNode_Bitmap *)node,
+                                          shift, hash, key, val, added_leaf);
+        default:
+            assert(0);
+    }
+}
 
+
+static hamt_find_t
+hamt_node_find(_PyHamtNode_BaseNode *node,
+               int32_t shift, int32_t hash,
+               PyObject *key, PyObject **val)
+{
+    switch (node->base_type) {
+        case Bitmap:
+            return hamt_node_bitmap_find((PyHamtNode_Bitmap *)node,
+                                         shift, hash, key, val);
         default:
             assert(0);
     }
@@ -387,6 +456,20 @@ hamt_assoc(PyHamtObject *o, PyObject *key, PyObject *val)
 }
 
 
+static hamt_find_t
+hamt_find(PyHamtObject *o, PyObject *key, PyObject **val)
+{
+    int32_t key_hash;
+
+    key_hash = hamt_hash(key);
+    if (key_hash == -1) {
+        return ERROR;
+    }
+
+    return hamt_node_find(o->h_root, 0, key_hash, key, val);
+}
+
+
 static int
 hamt_clear(PyHamtObject *self)
 {
@@ -466,6 +549,36 @@ hamt_py_set(PyHamtObject *self, PyObject *args)
 }
 
 
+static PyObject *
+hamt_py_get(PyHamtObject *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *def = NULL;
+    PyObject *val = NULL;
+    hamt_find_t res;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def))
+    {
+        return NULL;
+    }
+
+    res = hamt_find(self, key, &val);
+    switch (res) {
+        case ERROR:
+            return NULL;
+        case FOUND:
+            Py_INCREF(val);
+            return val;
+        case NOT_FOUND:
+            if (def == NULL) {
+                Py_RETURN_NONE;
+            }
+            Py_INCREF(def);
+            return def;
+    }
+}
+
+
 static Py_ssize_t
 hamt_py_len(PyHamtObject *self)
 {
@@ -475,6 +588,7 @@ hamt_py_len(PyHamtObject *self)
 
 static PyMethodDef PyHamt_methods[] = {
     {"set", (PyCFunction)hamt_py_set, METH_VARARGS, NULL},
+    {"get", (PyCFunction)hamt_py_get, METH_VARARGS, NULL},
     {NULL, NULL}
 };
 
