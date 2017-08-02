@@ -416,16 +416,33 @@ hamt_node_bitmap_dump(PyHamtNode_Bitmap *node,
                       _PyUnicodeWriter *writer, int level)
 {
     Py_ssize_t i;
+    PyObject *tmp1;
+    PyObject *tmp2;
 
     if (_hamt_dump_ident(writer, level + 1)) {
         goto error;
     }
 
-    if (_hamt_dump_format(writer, "BitmapNode size=%zd:\n",
+    if (_hamt_dump_format(writer, "BitmapNode(size=%zd ",
                           Py_SIZE(node)))
     {
         goto error;
     }
+
+    tmp1 = PyLong_FromLong(node->b_bitmap);
+    if (tmp1 == NULL) {
+        goto error;
+    }
+    tmp2 = _PyLong_Format(tmp1, 2);
+    Py_DECREF(tmp1);
+    if (tmp2 == NULL) {
+        goto error;
+    }
+    if (_hamt_dump_format(writer, "bitmap=%S id=%p):\n", tmp2, node)) {
+        Py_DECREF(tmp2);
+        goto error;
+    }
+    Py_DECREF(tmp2);
 
     for (i = 0; i < Py_SIZE(node); i += 2) {
         PyObject *key_or_null = node->b_array[i];
@@ -674,8 +691,8 @@ hamt_node_collision_dump(PyHamtNode_Collision *node,
         goto error;
     }
 
-    if (_hamt_dump_format(writer, "CollisionNode size=%zd:\n",
-                          Py_SIZE(node)))
+    if (_hamt_dump_format(writer, "CollisionNode(size=%zd id=%p):\n",
+                          Py_SIZE(node), node))
     {
         goto error;
     }
@@ -940,7 +957,7 @@ hamt_dump(PyHamtObject *self)
 
     _PyUnicodeWriter_Init(&writer);
 
-    if (_hamt_dump_format(&writer, "hamp len=%zd:\n", self->h_count)) {
+    if (_hamt_dump_format(&writer, "HAMT(len=%zd):\n", self->h_count)) {
         goto error;
     }
 
