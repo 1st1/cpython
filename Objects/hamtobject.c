@@ -197,6 +197,7 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
             return ret;
         }
 
+        assert(key != NULL);
         comp_err = PyObject_RichCompareBool(key, key_or_null, Py_EQ);
         if (comp_err < 0) {  /* exception in __eq__ */
             return NULL;
@@ -299,6 +300,7 @@ hamt_node_bitmap_find(PyHamtNode_Bitmap *self,
                               shift +4, hash, key, val);
     }
 
+    assert(key != NULL);
     comp_err = PyObject_RichCompareBool(key, key_or_null, Py_EQ);
     if (comp_err < 0) {  /* exception in __eq__ */
         return ERROR;
@@ -344,6 +346,205 @@ hamt_node_bitmap_dealloc(PyHamtNode_Bitmap *self)
 }
 
 
+/////////////////////////////////// Collision Node
+
+
+static _PyHamtNode_BaseNode *
+hamt_node_collision_new(int32_t hash, Py_ssize_t size)
+{
+    PyHamtNode_Collision *node;
+    Py_ssize_t i;
+
+    assert(size >= 0);
+    assert(size % 2 == 0);
+
+    node = PyObject_GC_NewVar(
+        PyHamtNode_Collision, &_PyHamt_CollisionNode_Type, size);
+    if (node == NULL) {
+        return NULL;
+    }
+
+    for (i = 0; i < size; i++) {
+        node->c_array[i] = NULL;
+    }
+
+    Py_SIZE(node) = size;
+    node->c_type = Collision;
+    node->c_hash = hash;
+
+    _PyObject_GC_TRACK(node);
+
+    return (_PyHamtNode_BaseNode *)node;
+}
+
+
+static hamt_find_t
+hamt_node_collision_find_index(PyHamtNode_Collision *self, PyObject *key,
+                               Py_ssize_t *idx)
+{
+    Py_ssize_t i;
+    PyObject *el;
+    int cmp;
+
+    for (i = 0; i < Py_SIZE(self); i += 2) {
+        el = self->c_array[i];
+
+        assert(el != NULL);
+        cmp = PyObject_RichCompareBool(key, el, Py_EQ);
+        if (cmp < 0) {
+            return ERROR;
+        }
+        if (cmp == 1) {
+            *idx = i;
+            return FOUND;
+        }
+    }
+
+    return NOT_FOUND;
+}
+
+
+static _PyHamtNode_BaseNode *
+hamt_node_collision_assoc(PyHamtNode_Collision *self,
+                          int32_t shift, int32_t hash,
+                          PyObject *key, PyObject *val, bool* added_leaf)
+{
+    if (hash == self->c_hash) {
+        Py_ssize_t key_idx = -1;
+        Py_ssize_t val_idx;
+        hamt_find_t found;
+        PyHamtNode_Collision *new_node;
+        Py_ssize_t i;
+
+        found = hamt_node_collision_find_index(self, key, &key_idx);
+        switch (found) {
+            case ERROR:
+                return NULL;
+
+            case NOT_FOUND:
+                new_node = (PyHamtNode_Collision *)hamt_node_collision_new(
+                    self->c_hash, Py_SIZE(self) + 2);
+                if (new_node == NULL) {
+                    return NULL;
+                }
+
+                for (i = 0; i < Py_SIZE(self); i++) {
+                    Py_INCREF(self->c_array[i]);
+                    new_node->c_array[i] = self->c_array[i];
+                }
+
+                Py_INCREF(key);
+                new_node->c_array[i] = key;
+                Py_INCREF(val);
+                new_node->c_array[i + 1] = val;
+
+                *added_leaf = true;
+                return (_PyHamtNode_BaseNode *)new_node;
+
+            case FOUND:
+                assert(key_idx >= 0);
+                assert(key_idx < Py_SIZE(self));
+                val_idx = key_idx + 1;
+
+                if (self->c_array[val_idx] == val) {
+                    Py_INCREF(self);
+                    return (_PyHamtNode_BaseNode *)self;
+                }
+
+                new_node = (PyHamtNode_Collision *)hamt_node_collision_new(
+                    self->c_hash, Py_SIZE(self));
+                if (new_node == NULL) {
+                    return NULL;
+                }
+
+                for (i = 0; i < Py_SIZE(self); i++) {
+                    Py_INCREF(self->c_array[i]);
+                    new_node->c_array[i] = self->c_array[i];
+                }
+
+                Py_DECREF(new_node->c_array[val_idx]);
+                Py_INCREF(val);
+                new_node->c_array[val_idx] = val;
+
+                return (_PyHamtNode_BaseNode *)new_node;
+        }
+    }
+    else {
+        PyHamtNode_Bitmap *new_node;
+        _PyHamtNode_BaseNode *assoc_res;
+
+        new_node = (PyHamtNode_Bitmap *)hamt_node_bitmap_new(2);
+        if (new_node == NULL) {
+            return NULL;
+        }
+        new_node->b_bitmap = hamt_bitpos(self->c_hash, shift);
+        Py_INCREF(self);
+        new_node->b_array[1] = (PyObject*) self;
+
+        assoc_res = hamt_node_bitmap_assoc(
+            new_node, shift, hash, key, val, added_leaf);
+        Py_DECREF(new_node);
+        return assoc_res;
+    }
+}
+
+
+static hamt_find_t
+hamt_node_collision_find(PyHamtNode_Collision *self,
+                         int32_t shift, int32_t hash,
+                         PyObject *key, PyObject **val)
+{
+    Py_ssize_t idx = -1;
+    hamt_find_t res;
+
+    res = hamt_node_collision_find_index(self, key, &idx);
+    if (res == ERROR || res == NOT_FOUND) {
+        return res;
+    }
+
+    assert(idx >= 0);
+    assert(idx + 1 < Py_SIZE(self));
+
+    *val = self->c_array[idx + 1];
+    assert(*val != NULL);
+
+    return FOUND;
+}
+
+
+static int
+hamt_node_collision_traverse(PyHamtNode_Collision *self,
+                             visitproc visit, void *arg)
+{
+    Py_ssize_t i;
+
+    for (i = Py_SIZE(self); --i >= 0; ) {
+        Py_VISIT(self->c_array[i]);
+    }
+
+    return 0;
+}
+
+
+static void
+hamt_node_collision_dealloc(PyHamtNode_Collision *self)
+{
+    Py_ssize_t len = Py_SIZE(self);
+
+    PyObject_GC_UnTrack(self);
+    Py_TRASHCAN_SAFE_BEGIN(self)
+
+    if (len > 0) {
+        while (--len >= 0) {
+            Py_XDECREF(self->c_array[len]);
+        }
+    }
+
+    Py_TYPE(self)->tp_free((PyObject *)self);
+    Py_TRASHCAN_SAFE_END(self)
+}
+
+
 /////////////////////////////////// Node Dispatch
 
 
@@ -354,8 +555,13 @@ hamt_node_assoc(_PyHamtNode_BaseNode *node,
 {
     switch (node->base_type) {
         case Bitmap:
-            return hamt_node_bitmap_assoc((PyHamtNode_Bitmap *)node,
-                                          shift, hash, key, val, added_leaf);
+            return hamt_node_bitmap_assoc(
+                (PyHamtNode_Bitmap *)node,
+                shift, hash, key, val, added_leaf);
+        case Collision:
+            return hamt_node_collision_assoc(
+                (PyHamtNode_Collision *)node,
+                shift, hash, key, val, added_leaf);
         default:
             assert(0);
     }
@@ -369,8 +575,13 @@ hamt_node_find(_PyHamtNode_BaseNode *node,
 {
     switch (node->base_type) {
         case Bitmap:
-            return hamt_node_bitmap_find((PyHamtNode_Bitmap *)node,
-                                         shift, hash, key, val);
+            return hamt_node_bitmap_find(
+                (PyHamtNode_Bitmap *)node,
+                shift, hash, key, val);
+        case Collision:
+            return hamt_node_collision_find(
+                (PyHamtNode_Collision *)node,
+                shift, hash, key, val);
         default:
             assert(0);
     }
@@ -382,17 +593,36 @@ hamt_node_create(int32_t shift, PyObject *key1, PyObject *val1,
                  int32_t key2_hash, PyObject *key2, PyObject *val2)
 {
     bool added_leaf = false;
-    _PyHamtNode_BaseNode *n = hamt_node_bitmap_new(0);
+    _PyHamtNode_BaseNode *n;
     _PyHamtNode_BaseNode *n2;
     int32_t key1_hash;
 
-    if (n == NULL) {
+    key1_hash = hamt_hash(key1);
+    if (key1_hash == -1) {
         return NULL;
     }
 
-    key1_hash = hamt_hash(key1);
-    if (key1_hash == -1) {
-        Py_DECREF(n);
+    if (key1_hash == key2_hash) {
+        PyHamtNode_Collision *n;
+        n = (PyHamtNode_Collision *)hamt_node_collision_new(key1_hash, 4);
+        if (n == NULL) {
+            return NULL;
+        }
+
+        Py_INCREF(key1);
+        n->c_array[0] = key1;
+        Py_INCREF(val1);
+        n->c_array[1] = val1;
+        Py_INCREF(key2);
+        n->c_array[2] = key2;
+        Py_INCREF(val2);
+        n->c_array[3] = val2;
+
+        return (_PyHamtNode_BaseNode *)n;
+    }
+
+    n = hamt_node_bitmap_new(0);
+    if (n == NULL) {
         return NULL;
     }
 
@@ -639,5 +869,11 @@ PyTypeObject _PyHamt_BitmapNode_Type = {
 PyTypeObject _PyHamt_CollisionNode_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
     "hamt_collision_node",
-    sizeof(PyHamtNode_Collision),
+    sizeof(PyHamtNode_Collision) - sizeof(PyObject *),
+    sizeof(PyObject *),
+    .tp_dealloc = (destructor)hamt_node_collision_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)hamt_node_collision_traverse,
+    .tp_free = PyObject_GC_Del,
 };
