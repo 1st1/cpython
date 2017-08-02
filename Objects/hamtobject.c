@@ -2,7 +2,7 @@
 #include "Python.h"
 
 
-typedef enum {ERROR = -1, NOT_FOUND = 0, FOUND = 1} hamt_find_t;
+typedef enum {ERROR, NOT_FOUND, FOUND} hamt_find_t;
 
 
 static PyHamtNode_Bitmap *_empty_bitmap_node;
@@ -24,6 +24,10 @@ hamt_node_find(_PyHamtNode_BaseNode *node,
 static _PyHamtNode_BaseNode *
 hamt_node_create(int32_t shift, PyObject *key1, PyObject *val1,
                  int32_t key2_hash, PyObject *key2, PyObject *val2);
+
+static int
+hamt_node_dump(_PyHamtNode_BaseNode *node,
+               _PyUnicodeWriter *writer, int level);
 
 
 /* Returns -1 on error */
@@ -65,6 +69,67 @@ static inline int32_t
 hamt_bitindex(int32_t bitmap, int32_t bit)
 {
     return hamt_bitcount(bitmap & (bit - 1));
+}
+
+
+/////////////////////////////////// Dump Helpers
+
+
+static int
+_hamt_dump_ident(_PyUnicodeWriter *writer, int level)
+{
+    PyObject *str = NULL;
+    PyObject *num = NULL;
+    PyObject *res = NULL;
+    int ret = -1;
+
+    str = PyUnicode_FromString("    ");
+    if (str == NULL) {
+        goto error;
+    }
+
+    num = PyLong_FromLong((long)level);
+    if (num == NULL) {
+        goto error;
+    }
+
+    res = PyNumber_Multiply(str, num);
+    if (res == NULL) {
+        goto error;
+    }
+
+    ret = _PyUnicodeWriter_WriteStr(writer, res);
+
+error:
+    Py_XDECREF(res);
+    Py_XDECREF(str);
+    Py_XDECREF(num);
+    return ret;
+}
+
+
+static int
+_hamt_dump_format(_PyUnicodeWriter *writer, const char *format, ...)
+{
+    PyObject* msg;
+    int ret;
+
+    va_list vargs;
+#ifdef HAVE_STDARG_PROTOTYPES
+    va_start(vargs, format);
+#else
+    va_start(vargs);
+#endif
+    msg = PyUnicode_FromFormatV(format, vargs);
+    va_end(vargs);
+
+    if (msg == NULL) {
+        return -1;
+    }
+
+    ret = _PyUnicodeWriter_WriteStr(writer, msg);
+    Py_DECREF(msg);
+    return ret;
 }
 
 
@@ -346,6 +411,60 @@ hamt_node_bitmap_dealloc(PyHamtNode_Bitmap *self)
 }
 
 
+static int
+hamt_node_bitmap_dump(PyHamtNode_Bitmap *node,
+                      _PyUnicodeWriter *writer, int level)
+{
+    Py_ssize_t i;
+
+    if (_hamt_dump_ident(writer, level + 1)) {
+        goto error;
+    }
+
+    if (_hamt_dump_format(writer, "BitmapNode size=%zd:\n",
+                          Py_SIZE(node)))
+    {
+        goto error;
+    }
+
+    for (i = 0; i < Py_SIZE(node); i += 2) {
+        PyObject *key_or_null = node->b_array[i];
+        PyObject *val_or_node = node->b_array[i + 1];
+
+        if (_hamt_dump_ident(writer, level + 2)) {
+            goto error;
+        }
+
+        if (key_or_null == NULL) {
+            if (_hamt_dump_format(writer, "NULL:\n")) {
+                goto error;
+            }
+
+            if (hamt_node_dump((_PyHamtNode_BaseNode *)val_or_node,
+                               writer, level + 2))
+            {
+                goto error;
+            }
+        }
+        else {
+            if (_hamt_dump_format(writer, "%R: %R", key_or_null,
+                                  val_or_node))
+            {
+                goto error;
+            }
+        }
+
+        if (_hamt_dump_format(writer, "\n")) {
+            goto error;
+        }
+    }
+
+    return 0;
+error:
+    return -1;
+}
+
+
 /////////////////////////////////// Collision Node
 
 
@@ -545,6 +664,41 @@ hamt_node_collision_dealloc(PyHamtNode_Collision *self)
 }
 
 
+static int
+hamt_node_collision_dump(PyHamtNode_Collision *node,
+                         _PyUnicodeWriter *writer, int level)
+{
+    Py_ssize_t i;
+
+    if (_hamt_dump_ident(writer, level + 1)) {
+        goto error;
+    }
+
+    if (_hamt_dump_format(writer, "CollisionNode size=%zd:\n",
+                          Py_SIZE(node)))
+    {
+        goto error;
+    }
+
+    for (i = 0; i < Py_SIZE(node); i += 2) {
+        PyObject *key = node->c_array[i];
+        PyObject *val = node->c_array[i + 1];
+
+        if (_hamt_dump_ident(writer, level + 2)) {
+            goto error;
+        }
+
+        if (_hamt_dump_format(writer, "%R: %R\n", key, val)) {
+            goto error;
+        }
+    }
+
+    return 0;
+error:
+    return -1;
+}
+
+
 /////////////////////////////////// Node Dispatch
 
 
@@ -582,6 +736,23 @@ hamt_node_find(_PyHamtNode_BaseNode *node,
             return hamt_node_collision_find(
                 (PyHamtNode_Collision *)node,
                 shift, hash, key, val);
+        default:
+            assert(0);
+    }
+}
+
+
+static int
+hamt_node_dump(_PyHamtNode_BaseNode *node,
+               _PyUnicodeWriter *writer, int level)
+{
+    switch (node->base_type) {
+        case Bitmap:
+            return hamt_node_bitmap_dump(
+                (PyHamtNode_Bitmap *)node, writer, level);
+        case Collision:
+            return hamt_node_collision_dump(
+                (PyHamtNode_Collision *)node, writer, level);
         default:
             assert(0);
     }
@@ -762,6 +933,29 @@ hamt_dealloc(PyObject *self)
 }
 
 
+static PyObject *
+hamt_dump(PyHamtObject *self)
+{
+    _PyUnicodeWriter writer;
+
+    _PyUnicodeWriter_Init(&writer);
+
+    if (_hamt_dump_format(&writer, "hamp len=%zd:\n", self->h_count)) {
+        goto error;
+    }
+
+    if (hamt_node_dump(self->h_root, &writer, 0)) {
+        goto error;
+    }
+
+    return _PyUnicodeWriter_Finish(&writer);
+
+error:
+    _PyUnicodeWriter_Dealloc(&writer);
+    return NULL;
+}
+
+
 /////////////////////////////////// Hamt Methods
 
 
@@ -809,6 +1003,13 @@ hamt_py_get(PyHamtObject *self, PyObject *args)
 }
 
 
+static PyObject *
+hamt_py_dump(PyHamtObject *self, PyObject *args)
+{
+    return hamt_dump(self);
+}
+
+
 static Py_ssize_t
 hamt_py_len(PyHamtObject *self)
 {
@@ -819,6 +1020,7 @@ hamt_py_len(PyHamtObject *self)
 static PyMethodDef PyHamt_methods[] = {
     {"set", (PyCFunction)hamt_py_set, METH_VARARGS, NULL},
     {"get", (PyCFunction)hamt_py_get, METH_VARARGS, NULL},
+    {"_dump", (PyCFunction)hamt_py_dump, METH_NOARGS, NULL},
     {NULL, NULL}
 };
 
