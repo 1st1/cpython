@@ -624,6 +624,7 @@ clone_dict(PyObject *s)
     PyDictObject *ms;
     Py_ssize_t i, n, keys_size;
     PyDictKeyEntry *entry, *ep0;
+    PyObject *value;
 
     assert(PyDict_CheckExact(s));
     ms = (PyDictObject*)s;
@@ -639,23 +640,32 @@ clone_dict(PyObject *s)
 
     memcpy(keys, ms->ma_keys, keys_size);
 
+    /* After copying key/value pairs, we need to inref all
+       keys and values and they are about to be co-owned by a
+       new dict object. */
     ep0 = DK_ENTRIES(keys);
-    for (i = 0, n = keys->dk_nentries; i < n; i++) {
-        PyObject *key, *value;
+    n = keys->dk_nentries;
+    for (i = 0; i < n; i++) {
         entry = &ep0[i];
-        key = entry->me_key;
-        if (key == NULL) {
-            continue;
-        }
         value = entry->me_value;
-        Py_INCREF(key);
-        Py_INCREF(value);
+        if (value != NULL) {
+            Py_INCREF(value);
+            Py_INCREF(entry->me_key);
+        }
     }
 
     new = (PyDictObject *)new_dict(keys, NULL);
+    if (new == NULL) {
+        /* In case of an error, `new_dict()` will take care of
+           cleaning up `keys`. */
+        return NULL;
+    }
     new->ma_used = ms->ma_used;
     assert(_PyDict_CheckConsistency(new));
-    _PyObject_GC_TRACK(new);
+    if (_PyObject_GC_IS_TRACKED(s)) {
+        /* Maintain tracking. */
+        _PyObject_GC_TRACK(new);
+    }
     return (PyObject *)new;
 }
 
