@@ -8,6 +8,9 @@ extern "C" {
 typedef enum {Array, Bitmap, Collision} hamt_node_t;
 
 
+#define _PyHamtNode_Array_size 32
+
+
 #define _PyHAMT_HEAD(prefix)            \
     PyObject_VAR_HEAD                   \
     hamt_node_t prefix##_type;
@@ -20,12 +23,13 @@ typedef struct {
 
 typedef struct {
     _PyHAMT_HEAD(a)
+    _PyHamtNode_BaseNode *a_array[_PyHamtNode_Array_size];
 } PyHamtNode_Array;
 
 
 typedef struct {
     _PyHAMT_HEAD(b)
-    int32_t b_bitmap;
+    uint32_t b_bitmap;
     PyObject *b_array[1];
 } PyHamtNode_Bitmap;
 
