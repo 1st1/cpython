@@ -107,32 +107,16 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(len(h5), 3)
 
     def test_hamt_stress_1(self):
-        h = hamt()
-        d = dict()
-        N = 1000
-        for i in range(N):
-            h = h.set(str(i), i)
-            d[str(i)] = i
-        self.assertEqual(len(h), N)
-        for i in range(N):
-            self.assertEqual(h.get(str(i), 'not found'), i)
-
-
-        import time
-
-        I = 10000
-
-        st = time.monotonic()
-        for _ in range(I):
-            d.get('50')
-        end = time.monotonic() - st
-        print(f"dict.get() x {I}: {end:.2f}")
-
-        st = time.monotonic()
-        for _ in range(I):
-            h.get('50')
-        end = time.monotonic() - st
-        print(f"hamt.get() x {I}: {end:.2f}")
+        for _ in range(5):
+            h = hamt()
+            d = dict()
+            N = 10000
+            for i in range(N):
+                h = h.set(str(i), i)
+                d[str(i)] = i
+            self.assertEqual(len(h), N)
+            for i in range(N):
+                self.assertEqual(h.get(str(i), 'not found'), i)
 
 
 if __name__ == "__main__":
