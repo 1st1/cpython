@@ -1686,9 +1686,6 @@ _Py_ReadyTypes(void)
     if (PyType_Ready(&PyDict_Type) < 0)
         Py_FatalError("Can't initialize dict type");
 
-    if (PyType_Ready(&PyHamt_Type) < 0)
-        Py_FatalError("Can't initialize hamt type");
-
     if (PyType_Ready(&PyDictKeys_Type) < 0)
         Py_FatalError("Can't initialize dict keys type");
 
@@ -1823,6 +1820,12 @@ _Py_ReadyTypes(void)
 
     if (PyType_Ready(&_PyCoroWrapper_Type) < 0)
         Py_FatalError("Can't initialize coroutine wrapper type");
+
+    if ((PyType_Ready(&PyHamt_Type) < 0) ||
+        (PyType_Ready(&_PyHamt_ArrayNode_Type) < 0) ||
+        (PyType_Ready(&_PyHamt_BitmapNode_Type) < 0) ||
+        (PyType_Ready(&_PyHamt_CollisionNode_Type) < 0))
+        Py_FatalError("Can't initialize hamt type");
 }
 
 
