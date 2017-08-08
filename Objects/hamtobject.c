@@ -84,8 +84,9 @@ hamt_hash(PyObject *o)
 
     /* While it's suboptimal to reduce Python's 64 bit hash to
        32 bits via xor, it seems that the resulting hash function
-       is good enough.  Storing 10, 100, 1000 Python strings results
-       in a relatively shallow uniform trie. */
+       is good enough.  This is also how Java hashes its Long type.
+       Storing 10, 100, 1000 Python strings results in a relatively
+       shallow uniform trie. */
     return (int32_t)(hash & 0xffffffffl) ^ (int32_t)(hash >> 32);
 #endif
 }
