@@ -2,6 +2,7 @@
 /* Thread and interpreter state structures and their interfaces */
 
 #include "Python.h"
+#include "pystate-private.h"
 
 #define GET_TSTATE() \
     ((PyThreadState*)_Py_atomic_load_relaxed(&_PyThreadState_Current))
@@ -286,6 +287,8 @@ new_threadstate(PyInterpreterState *interp, int init)
         tstate->async_gen_firstiter = NULL;
         tstate->async_gen_finalizer = NULL;
 
+        tstate->exec_context = NULL;
+
         if (init)
             _PyThreadState_Init(tstate);
 
@@ -467,6 +470,8 @@ PyThreadState_Clear(PyThreadState *tstate)
     Py_CLEAR(tstate->coroutine_wrapper);
     Py_CLEAR(tstate->async_gen_firstiter);
     Py_CLEAR(tstate->async_gen_finalizer);
+
+    Py_CLEAR(tstate->exec_context);
 }
 
 
@@ -963,6 +968,333 @@ PyGILState_Release(PyGILState_STATE oldstate)
 }
 
 #endif /* WITH_THREAD */
+
+
+/* Execution Context: Internal Data Object */
+
+
+// TODO: Add cleanup code for this.
+static PyExecContextData *empty_exec_context;
+
+
+static void
+exec_ctx_data_dealloc(PyExecContextData *ctx)
+{
+    if (empty_exec_context == ctx) {
+        return;
+    }
+
+    _PyObject_GC_UNTRACK((PyObject *)ctx);
+    Py_CLEAR(ctx->ec_items);
+    PyObject_GC_Del(ctx);
+}
+
+
+static int
+exec_ctx_data_traverse(PyExecContextData *ctx, visitproc visit, void *arg)
+{
+    Py_VISIT(ctx->ec_items);
+    return 0;
+}
+
+
+static PyExecContextData *
+exec_ctx_data_new(void)
+{
+    PyExecContextData *ctx;
+    PyObject *items;
+
+    if (empty_exec_context != NULL) {
+        Py_INCREF(empty_exec_context);
+        return empty_exec_context;
+    }
+
+    items = PyDict_New();
+    if (items == NULL) {
+        return NULL;
+    }
+
+    ctx = PyObject_GC_New(PyExecContextData, &PyExecContextData_Type);
+    if (ctx == NULL) {
+        Py_DECREF(items);
+        return NULL;
+    }
+
+    ctx->ec_items = items;  /* borrow ref */
+
+    _PyObject_GC_TRACK((PyObject*)ctx);
+
+    if (empty_exec_context == NULL) {
+        empty_exec_context = ctx;
+        Py_INCREF(ctx);
+    }
+
+    return ctx;
+}
+
+
+static PyExecContextData *
+exec_ctx_data_clone(PyExecContextData *from_ctx)
+{
+    PyExecContextData *ctx;
+    PyObject *new_items;
+
+    assert(PyExecContextData_CheckExact(from_ctx));
+
+    new_items = PyDict_Copy(from_ctx->ec_items);
+    if (new_items == NULL) {
+        return NULL;
+    }
+
+    ctx = PyObject_GC_New(PyExecContextData, &PyExecContextData_Type);
+    if (ctx == NULL) {
+        Py_DECREF(new_items);
+        return NULL;
+    }
+
+    ctx->ec_items = new_items;
+
+    _PyObject_GC_TRACK((PyObject*)ctx);
+    return ctx;
+}
+
+
+PyTypeObject PyExecContextData_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "ExecContextData",
+    sizeof(PyExecContextData),
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_dealloc = (destructor)exec_ctx_data_dealloc,
+    .tp_traverse = (traverseproc)exec_ctx_data_traverse,
+};
+
+
+static inline PyThreadState *
+exec_ctx_data_get_tstate(void)
+{
+    PyThreadState *tstate = GET_TSTATE();
+    if (tstate == NULL) {
+        Py_FatalError("execution context: no current thread");
+    }
+    return tstate;
+}
+
+
+/* returns a borrowed ref */
+static PyExecContextData *
+exec_ctx_data_get(void)
+{
+    PyThreadState *tstate = exec_ctx_data_get_tstate();
+    return tstate->exec_context;
+}
+
+
+/* *val will contain a borrowed ref */
+static int
+exec_ctx_data_get_item(PyExecContextData *ctx, PyObject *key, PyObject **val)
+{
+    assert(PyExecContextData_CheckExact(ctx));
+
+    *val = PyDict_GetItemWithError(ctx->ec_items, key);
+    if (*val == NULL && PyErr_Occurred()) {
+        return -1;
+    }
+
+    return 0;
+}
+
+
+static PyExecContextData *
+exec_ctx_data_set_item(PyExecContextData *ctx, PyObject *key, PyObject *val)
+{
+    PyExecContextData *new_ctx = NULL;
+    int res;
+
+    assert(PyExecContextData_CheckExact(ctx));
+
+    if (val == NULL || val == Py_None) {
+        res = PyDict_Contains(ctx->ec_items, key);
+        switch (res) {
+        case -1:
+            /* An error during "contains" check */
+            goto error;
+        case 1:
+            /* `key` is in ctx, clone and remove */
+            new_ctx = exec_ctx_data_clone(ctx);
+            if (new_ctx == NULL) {
+                goto error;
+            }
+            if (PyDict_DelItem(new_ctx->ec_items, key)) {
+                goto error;
+            }
+            return new_ctx;
+        case 0:
+            /* `key` is not in ctx already;
+               just return ctx (it's immutable) */
+            Py_INCREF(ctx);
+            return ctx;
+        }
+    }
+
+    new_ctx = exec_ctx_data_clone(ctx);
+    if (new_ctx == NULL) {
+        goto error;
+    }
+
+    if (PyDict_SetItem(new_ctx->ec_items, key, val)) {
+        goto error;
+    }
+
+    return new_ctx;
+
+error:
+    Py_XDECREF(new_ctx);
+    return NULL;
+}
+
+
+/* Execution Context: Public C API */
+
+
+PyExecContextData *
+PyExecContext_New(void)
+{
+    return exec_ctx_data_new();
+}
+
+
+PyExecContextData *
+PyExecContext_SetItem(PyExecContextData *ctx, PyObject *key, PyObject *val)
+{
+    return exec_ctx_data_set_item(ctx, key, val);
+}
+
+
+int
+PyExecContext_GetItem(PyExecContextData *ctx, PyObject *key, PyObject **val)
+{
+    if (exec_ctx_data_get_item(ctx, key, val)) {
+        return -1;
+    }
+    else {
+        Py_XINCREF(*val);
+        return 0;
+    }
+}
+
+
+int
+PyThreadState_SetExecContext(PyExecContextData *ctx)
+{
+    PyThreadState *tstate = exec_ctx_data_get_tstate();
+
+    if (ctx != NULL) {
+        assert(PyExecContextData_CheckExact(ctx));
+        Py_INCREF(ctx);
+    }
+
+    Py_XDECREF(tstate->exec_context);
+    tstate->exec_context = ctx;
+    return 0;
+}
+
+
+PyExecContextData *
+PyThreadState_GetExecContext(void)
+{
+    PyThreadState *tstate = exec_ctx_data_get_tstate();
+    PyExecContextData *ctx;
+
+    if (tstate->exec_context != NULL) {
+        Py_INCREF(tstate->exec_context);
+        return tstate->exec_context;
+    }
+
+    ctx = exec_ctx_data_new();
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    tstate->exec_context = ctx;
+
+    Py_INCREF(ctx);
+    return ctx;
+}
+
+
+int
+PyThreadState_SetExecContextItem(PyObject *key, PyObject *val)
+{
+    PyExecContextData *ctx;
+    PyExecContextData *new_ctx;
+    PyThreadState *tstate = exec_ctx_data_get_tstate();
+
+    ctx = exec_ctx_data_get();
+    if (ctx == NULL) {
+        /* Current threadstate doesn't have an execution context;
+           create a new one and set it. */
+
+        ctx = exec_ctx_data_new();
+        if (ctx == NULL) {
+            return -1;
+        }
+
+        new_ctx = exec_ctx_data_set_item(ctx, key, val);
+        if (new_ctx == NULL) {
+            Py_DECREF(ctx);
+            return -1;
+        }
+
+        tstate->exec_context = new_ctx;
+        return 0;
+    }
+    else {
+        /* Current threadstate *has* an execution context;
+           clone that one and set a new one. */
+
+        new_ctx = exec_ctx_data_set_item(ctx, key, val);
+        if (new_ctx == NULL) {
+            return -1;
+        }
+
+        Py_DECREF(tstate->exec_context);
+        tstate->exec_context = new_ctx;
+        return 0;
+    }
+}
+
+
+int
+PyThreadState_GetExecContextItem(PyObject *key, PyObject **val)
+{
+    PyExecContextData *ctx;
+    int res;
+
+    ctx = exec_ctx_data_get();
+    if (ctx == NULL) {
+        /* No current exec context; just report key missing. */
+        *val = NULL;
+        return 0;
+    }
+
+    Py_INCREF(ctx);
+    res = exec_ctx_data_get_item(ctx, key, val);
+    Py_DECREF(ctx);
+
+    if (res) {
+        /* An exception during item lookup. */
+        *val = NULL;
+        return -1;
+    }
+
+    /* No error during lookup, but the item still
+       might be missing (*val == NULL) */
+    Py_XINCREF(*val);
+    return 0;
+}
+
+
 
 #ifdef __cplusplus
 }

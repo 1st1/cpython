@@ -18,6 +18,7 @@ Data members:
 #include "code.h"
 #include "frameobject.h"
 #include "pythread.h"
+#include "pystate-private.h"
 
 #include "osdefs.h"
 #include <locale.h>
@@ -1363,6 +1364,351 @@ sys_getandroidapilevel(PyObject *self)
 #endif   /* ANDROID_API_LEVEL */
 
 
+/* Execution Context */
+
+
+typedef struct {
+    PyObject_HEAD
+    PyExecContextData *data;
+} ExecutionContext;
+
+
+static PyObject * exec_ctx_new(PyTypeObject *, PyObject *, PyObject *);
+
+
+static void
+exec_ctx_dealloc(ExecutionContext *ctx)
+{
+    _PyObject_GC_UNTRACK((PyObject *)ctx);
+    Py_CLEAR(ctx->data);
+    PyObject_GC_Del(ctx);
+}
+
+
+static int
+exec_ctx_traverse(ExecutionContext *ctx, visitproc visit, void *arg)
+{
+    Py_VISIT(ctx->data);
+    return 0;
+}
+
+
+static PyObject *
+exec_ctx_get(ExecutionContext *ctx, PyObject *args)
+{
+    PyObject *key;
+    PyObject *def = NULL;
+    PyObject *val;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
+        return NULL;
+    }
+
+    if (PyExecContext_GetItem(ctx->data, key, &val)) {
+        return NULL;
+    }
+
+    if (val == NULL) {
+        if (def != NULL) {
+            Py_INCREF(def);
+            return def;
+        }
+        else {
+            Py_RETURN_NONE;
+        }
+    }
+    else {
+        return val;
+    }
+}
+
+
+static PyObject *
+exec_ctx_run(ExecutionContext *ctx, PyObject *args)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    PyExecContextData *old_ctx_data;
+    PyObject *callable;
+    PyObject *res;
+    Py_ssize_t nargs;
+
+    assert(PyTuple_Check(args));
+    nargs = PyTuple_GET_SIZE(args);
+    if (nargs < 1) {
+        PyErr_Format(PyExc_TypeError,
+                     "run expected at least 1 argument, got 0");
+        return NULL;
+    }
+    callable = PyTuple_GET_ITEM(args, 0);
+
+    old_ctx_data = tstate->exec_context;
+    Py_INCREF(ctx->data);
+    tstate->exec_context = ctx->data;
+
+    if (nargs == 1) {
+        res = _PyObject_CallNoArg(callable);
+    }
+    else {
+        /* Since this is a sys module, we assume that we can
+           make some optimizations using private C API.
+           Here we want to call the `callable` without
+           re-packing arguments into a new tuple. For that,
+           we use the low-level FastCall API, passing
+           it the pointer to the arguments in `args` tuple
+           directly. */
+        res = _PyObject_FastCall(
+            callable,
+            ((PyTupleObject *)(args))->ob_item + 1,
+            nargs - 1);
+    }
+
+    Py_DECREF(tstate->exec_context);
+    tstate->exec_context = old_ctx_data;
+
+    return res;
+}
+
+
+static Py_ssize_t
+exec_ctx_length(ExecutionContext *ctx)
+{
+    return PyDict_Size(ctx->data->ec_items);
+}
+
+
+static PyObject *
+exec_ctx_sub(ExecutionContext *ctx, PyObject *key)
+{
+    PyObject *val = NULL;
+
+    if (PyExecContext_GetItem(ctx->data, key, &val)) {
+        return NULL;
+    }
+
+    if (val == NULL) {
+        _PyErr_SetKeyError(key);
+        return NULL;
+    }
+
+    return val;
+}
+
+
+static int
+exec_ctx_ass_sub(ExecutionContext *ctx, PyObject *key, PyObject *val)
+{
+    PyExecContextData *new_data;
+    new_data = PyExecContext_SetItem(ctx->data, key, val);
+    if (new_data == NULL) {
+        return -1;
+    }
+    ctx->data = new_data;
+    return 0;
+}
+
+
+static int
+exec_ctx_contains(ExecutionContext *ctx, PyObject *key)
+{
+    PyObject *val = NULL;
+
+    if (PyExecContext_GetItem(ctx->data, key, &val)) {
+        return -1;
+    }
+
+    if (val == NULL) {
+        return 0;
+    }
+
+    Py_DECREF(val);
+    return 1;
+}
+
+
+static PySequenceMethods exec_ctx_as_sequence = {
+    0,                                  /* sq_length */
+    0,                                  /* sq_concat */
+    0,                                  /* sq_repeat */
+    0,                                  /* sq_item */
+    0,                                  /* sq_slice */
+    0,                                  /* sq_ass_item */
+    0,                                  /* sq_ass_slice */
+    (objobjproc)exec_ctx_contains,      /* sq_contains */
+    0,                                  /* sq_inplace_concat */
+    0,                                  /* sq_inplace_repeat */
+};
+
+
+static PyMappingMethods exec_ctx_as_mapping = {
+    (lenfunc)exec_ctx_length,           /*mp_length*/
+    (binaryfunc)exec_ctx_sub,           /*mp_subscript*/
+    (objobjargproc)exec_ctx_ass_sub,    /*mp_ass_subscript*/
+};
+
+
+static PyMethodDef ExecutionContext_methods[] = {
+    {"run", (PyCFunction)exec_ctx_run, METH_VARARGS, NULL},
+    {"get", (PyCFunction)exec_ctx_get, METH_VARARGS, NULL},
+    {NULL, NULL}                        /* Sentinel */
+};
+
+
+PyTypeObject ExecutionContext_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "sys.ExecutionContext",
+    sizeof(ExecutionContext),
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_methods = ExecutionContext_methods,
+    .tp_as_mapping = &exec_ctx_as_mapping,
+    .tp_as_sequence = &exec_ctx_as_sequence,
+    .tp_new = exec_ctx_new,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_dealloc = (destructor)exec_ctx_dealloc,
+    .tp_traverse = (traverseproc)exec_ctx_traverse,
+};
+
+
+static PyObject *
+exec_ctx_from_data(PyExecContextData *data)
+{
+    ExecutionContext *ctx;
+
+    ctx = PyObject_GC_New(ExecutionContext, &ExecutionContext_Type);
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    Py_INCREF(data);
+    ctx->data = data;
+
+    _PyObject_GC_TRACK((PyObject*)ctx);
+    return (PyObject *)ctx;
+}
+
+
+static PyObject *
+exec_ctx_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    ExecutionContext *ctx;
+    PyExecContextData *data;
+
+    if ((args != NULL && PyTuple_GET_SIZE(args)) ||
+            (kwds != NULL && PyDict_GET_SIZE(kwds)))
+    {
+        PyErr_SetString(
+            PyExc_ValueError, "sys.ExecutionContext doesn't accept arguments");
+        return NULL;
+    }
+
+    data = PyExecContext_New();
+    if (data == NULL) {
+        return NULL;
+    }
+
+    ctx = PyObject_GC_New(ExecutionContext, &ExecutionContext_Type);
+    if (ctx == NULL) {
+        Py_DECREF(data);
+        return NULL;
+    }
+
+    ctx->data = data;  /* borrow ref */
+
+    _PyObject_GC_TRACK((PyObject*)ctx);
+    return (PyObject *)ctx;
+}
+
+
+static PyObject *
+sys_get_execution_context(PyObject *self, PyObject *arg)
+{
+    PyExecContextData *ctx_data;
+    PyObject *res;
+    ctx_data = PyThreadState_GetExecContext();
+    if (ctx_data == NULL) {
+        return NULL;
+    }
+    res = exec_ctx_from_data(ctx_data);
+    Py_DECREF(ctx_data);
+    return res;
+}
+
+
+static PyObject *
+sys_set_execution_context(PyObject *self, PyObject *arg)
+{
+    ExecutionContext *ctx;
+
+    if (Py_TYPE(arg) != &ExecutionContext_Type) {
+        PyErr_SetString(PyExc_TypeError,
+                        "an instance of sys.ExecutionContext was expected");
+        return NULL;
+    }
+
+    ctx = (ExecutionContext *)arg;
+
+    if (PyThreadState_SetExecContext(ctx->data)) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+static PyObject *
+sys_set_execution_context_value(PyObject *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *val;
+
+    if (!PyArg_ParseTuple(args, "OO:set_execution_context_value",
+                          &key, &val))
+    {
+        return NULL;
+    }
+
+    if (PyThreadState_SetExecContextItem(key, val)) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+static PyObject *
+sys_get_execution_context_value(PyObject *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *def = NULL;
+    PyObject *val;
+
+    if (!PyArg_UnpackTuple(args, "get_execution_context_value", 1, 2,
+                           &key, &def))
+    {
+        return NULL;
+    }
+
+    if (PyThreadState_GetExecContextItem(key, &val)) {
+        return NULL;
+    }
+
+    if (val == NULL) {
+        if (def != NULL) {
+            Py_INCREF(def);
+            return def;
+        }
+        else {
+            Py_RETURN_NONE;
+        }
+    }
+    else {
+        return val;
+    }
+}
+
+
+/* Execution Context: end */
+
+
 static PyMethodDef sys_methods[] = {
     /* Might as well keep this in alphabetic order */
     {"callstats", (PyCFunction)sys_callstats, METH_NOARGS,
@@ -1451,6 +1797,14 @@ static PyMethodDef sys_methods[] = {
     {"getandroidapilevel", (PyCFunction)sys_getandroidapilevel, METH_NOARGS,
      getandroidapilevel_doc},
 #endif
+    {"set_execution_context", sys_set_execution_context, METH_O,
+     NULL},
+    {"get_execution_context", sys_get_execution_context, METH_NOARGS,
+     NULL},
+    {"set_execution_context_value", sys_set_execution_context_value,
+     METH_VARARGS, NULL},
+    {"get_execution_context_value", sys_get_execution_context_value,
+     METH_VARARGS, NULL},
     {NULL,              NULL}           /* sentinel */
 };
 
@@ -2068,6 +2422,13 @@ _PySys_BeginInit(void)
             return NULL;
         }
     }
+
+    if (PyType_Ready(&ExecutionContext_Type) < 0) {
+        return NULL;
+    }
+    Py_INCREF(&ExecutionContext_Type);
+    SET_SYS_FROM_STRING_BORROW("ExecutionContext",
+                               (PyObject *)&ExecutionContext_Type);
 
     if (PyErr_Occurred())
         return NULL;

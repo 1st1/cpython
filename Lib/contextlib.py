@@ -58,6 +58,7 @@ class _GeneratorContextManagerBase:
 
     def __init__(self, func, args, kwds):
         self.gen = func(*args, **kwds)
+        self.gen.gi_propagate_exec_context = True
         self.func, self.args, self.kwds = func, args, kwds
         # Issue 19330: ensure context manager instances have good docstrings
         doc = getattr(func, "__doc__", None)

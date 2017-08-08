@@ -18,6 +18,13 @@ struct _ts; /* Forward */
 struct _is; /* Forward */
 struct _frame; /* Forward declaration for PyFrameObject. */
 
+
+typedef struct _execcontextdata PyExecContextData;
+#define PyExecContextData_CheckExact(op) \
+        (Py_TYPE(op) == &PyExecContextData_Type)
+PyAPI_DATA(PyTypeObject) PyExecContextData_Type;
+
+
 #ifdef Py_LIMITED_API
 typedef struct _is PyInterpreterState;
 #else
@@ -179,6 +186,8 @@ typedef struct _ts {
 
     PyObject *async_gen_firstiter;
     PyObject *async_gen_finalizer;
+
+    PyExecContextData *exec_context;
 
     /* XXX signal handlers should also be here */
 
@@ -345,6 +354,21 @@ typedef struct _frame *(*PyThreadFrameGetter)(PyThreadState *self_);
 #ifndef Py_LIMITED_API
 PyAPI_DATA(PyThreadFrameGetter) _PyThreadState_GetFrame;
 #endif
+
+
+#ifndef Py_LIMITED_API
+PyAPI_FUNC(PyExecContextData *) PyExecContext_New(void);
+PyAPI_FUNC(PyExecContextData *) PyExecContext_SetItem(PyExecContextData *,
+                                                      PyObject *, PyObject *);
+PyAPI_FUNC(int) PyExecContext_GetItem(PyExecContextData *,
+                                      PyObject *, PyObject **);
+PyAPI_FUNC(int) PyThreadState_SetExecContext(PyExecContextData *);
+PyAPI_FUNC(PyExecContextData*) PyThreadState_GetExecContext(void);
+
+PyAPI_FUNC(int) PyThreadState_SetExecContextItem(PyObject *, PyObject *);
+PyAPI_FUNC(int) PyThreadState_GetExecContextItem(PyObject *, PyObject **);
+#endif
+
 
 #ifdef __cplusplus
 }

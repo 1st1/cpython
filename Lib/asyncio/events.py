@@ -76,7 +76,8 @@ class Handle:
     """Object returned by callback registration methods."""
 
     __slots__ = ('_callback', '_args', '_cancelled', '_loop',
-                 '_source_traceback', '_repr', '__weakref__')
+                 '_source_traceback', '_repr', '__weakref__',
+                 '_ctx')
 
     def __init__(self, callback, args, loop):
         self._loop = loop
@@ -84,6 +85,7 @@ class Handle:
         self._args = args
         self._cancelled = False
         self._repr = None
+        self._ctx = sys.get_execution_context()
         if self._loop.get_debug():
             self._source_traceback = traceback.extract_stack(sys._getframe(1))
         else:
@@ -119,7 +121,7 @@ class Handle:
 
     def _run(self):
         try:
-            self._callback(*self._args)
+            self._ctx.run(self._callback, *self._args)
         except Exception as exc:
             cb = _format_callback_source(self._callback, self._args)
             msg = 'Exception in callback {}'.format(cb)
