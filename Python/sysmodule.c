@@ -1367,10 +1367,17 @@ sys_getandroidapilevel(PyObject *self)
 /* Execution Context */
 
 
+#define ExecutionContext_MAXFL 100
+
+
 typedef struct {
     PyObject_HEAD
     PyExecContextData *data;
 } ExecutionContext;
+
+
+static ExecutionContext *exec_ctx_freelist[ExecutionContext_MAXFL];
+static int exec_ctx_freelist_free = 0;
 
 
 static PyObject * exec_ctx_new(PyTypeObject *, PyObject *, PyObject *);
@@ -1381,7 +1388,12 @@ exec_ctx_dealloc(ExecutionContext *ctx)
 {
     _PyObject_GC_UNTRACK((PyObject *)ctx);
     Py_CLEAR(ctx->data);
-    PyObject_GC_Del(ctx);
+    if (exec_ctx_freelist_free < ExecutionContext_MAXFL) {
+        exec_ctx_freelist[exec_ctx_freelist_free++] = ctx;
+    }
+    else {
+        PyObject_GC_Del(ctx);
+    }
 }
 
 
@@ -1568,12 +1580,28 @@ PyTypeObject ExecutionContext_Type = {
 };
 
 
+static inline ExecutionContext *
+_exec_ctx_new(void)
+{
+    if (exec_ctx_freelist_free) {
+        ExecutionContext *ctx;
+        exec_ctx_freelist_free--;
+        ctx = exec_ctx_freelist[exec_ctx_freelist_free];
+        _Py_NewReference((PyObject*)ctx);
+        return ctx;
+    }
+    else {
+        return PyObject_GC_New(ExecutionContext, &ExecutionContext_Type);
+    }
+}
+
+
 static PyObject *
 exec_ctx_from_data(PyExecContextData *data)
 {
     ExecutionContext *ctx;
 
-    ctx = PyObject_GC_New(ExecutionContext, &ExecutionContext_Type);
+    ctx = _exec_ctx_new();
     if (ctx == NULL) {
         return NULL;
     }
@@ -1605,7 +1633,7 @@ exec_ctx_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         return NULL;
     }
 
-    ctx = PyObject_GC_New(ExecutionContext, &ExecutionContext_Type);
+    ctx = _exec_ctx_new();
     if (ctx == NULL) {
         Py_DECREF(data);
         return NULL;
