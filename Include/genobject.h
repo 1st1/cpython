@@ -30,7 +30,7 @@ struct _frame; /* Avoid including frameobject.h */
     PyExecContextData *prefix##_exec_context;                              \
     /* Set to '1' for coroutines that are being awaited. */                 \
     /* Signals that the execution context changes should be propagated. */  \
-    char prefix##_propagate_exec_context;
+    char prefix##_isolated_execution_context;
 
 typedef struct {
     /* The gi_ prefix is intended to remind of generator-iterator. */

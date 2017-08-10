@@ -1683,12 +1683,12 @@ sys_set_execution_context(PyObject *self, PyObject *arg)
 
 
 static PyObject *
-sys_set_execution_context_value(PyObject *self, PyObject *args)
+sys_set_execution_context_item(PyObject *self, PyObject *args)
 {
     PyObject *key;
     PyObject *val;
 
-    if (!PyArg_ParseTuple(args, "OO:set_execution_context_value",
+    if (!PyArg_ParseTuple(args, "OO:set_execution_context_item",
                           &key, &val))
     {
         return NULL;
@@ -1703,13 +1703,13 @@ sys_set_execution_context_value(PyObject *self, PyObject *args)
 
 
 static PyObject *
-sys_get_execution_context_value(PyObject *self, PyObject *args)
+sys_get_execution_context_item(PyObject *self, PyObject *args)
 {
     PyObject *key;
     PyObject *def = NULL;
     PyObject *val;
 
-    if (!PyArg_UnpackTuple(args, "get_execution_context_value", 1, 2,
+    if (!PyArg_UnpackTuple(args, "get_execution_context_item", 1, 2,
                            &key, &def))
     {
         return NULL;
@@ -1829,9 +1829,9 @@ static PyMethodDef sys_methods[] = {
      NULL},
     {"get_execution_context", sys_get_execution_context, METH_NOARGS,
      NULL},
-    {"set_execution_context_value", sys_set_execution_context_value,
+    {"set_execution_context_item", sys_set_execution_context_item,
      METH_VARARGS, NULL},
-    {"get_execution_context_value", sys_get_execution_context_value,
+    {"get_execution_context_item", sys_get_execution_context_item,
      METH_VARARGS, NULL},
     {NULL,              NULL}           /* sentinel */
 };

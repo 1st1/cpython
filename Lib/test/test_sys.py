@@ -1019,7 +1019,7 @@ class SizeofTest(unittest.TestCase):
             check(bar, size('PP'))
         # generator
         def get_gen(): yield 1
-        check(get_gen(), size('Pb2PPP'))
+        check(get_gen(), size('Pb2PPPbP'))
         # iterator
         check(iter('abc'), size('lP'))
         # callable-iterator
@@ -1234,22 +1234,6 @@ class SizeofTest(unittest.TestCase):
         self.assertIsNone(cur.finalizer)
 
 
-# def preserve_global_context():
-#     class P:
-#         def __enter__(self):
-#             self.ctx = sys.get_execution_context()
-
-#         def __exit__(self, *e):
-#             sys.set_execution_context(self.ctx)
-
-#     def wrap(func):
-#         def wrapper(*args, **kwargs):
-#             with P():
-#                 return func(*args, **kwargs)
-#         return wrapper
-#     return wrap
-
-
 class ExecutionContextTest(unittest.TestCase):
 
     @contextlib.contextmanager
@@ -1262,12 +1246,12 @@ class ExecutionContextTest(unittest.TestCase):
 
     @preserve_global_context()
     def test_sys_exec_context_getter_1(self):
-        self.assertIsNone(sys.get_execution_context_value('a'))
-        self.assertEqual(sys.get_execution_context_value('a', 10), 10)
+        self.assertIsNone(sys.get_execution_context_item('a'))
+        self.assertEqual(sys.get_execution_context_item('a', 10), 10)
 
-        sys.set_execution_context_value('a', 42)
+        sys.set_execution_context_item('a', 42)
 
-        self.assertEqual(sys.get_execution_context_value('a', 10), 42)
+        self.assertEqual(sys.get_execution_context_item('a', 10), 42)
 
     @preserve_global_context()
     def test_sys_exec_context_getter_2(self):
@@ -1279,132 +1263,132 @@ class ExecutionContextTest(unittest.TestCase):
     def test_sys_exec_context_2(self):
         def deeply_nested():
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
-            sys.set_execution_context_value('a', 14200)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
+            sys.set_execution_context_item('a', 14200)
 
         def nested():
-            sys.set_execution_context_value('a', 142)
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_item('a', 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             yield from deeply_nested()
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
 
-        sys.set_execution_context_value('a', 42)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        sys.set_execution_context_item('a', 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen = nested()
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         with self.assertRaises(StopIteration):
             gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
 
     @preserve_global_context()
     def test_sys_exec_context_3(self):
         @types.coroutine
         def thats_deep():
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
-            sys.set_execution_context_value('a', 1420)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
+            sys.set_execution_context_item('a', 1420)
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 1420)
+            self.assertEqual(sys.get_execution_context_item('a'), 1420)
 
         async def deeply_nested():
             await thats_deep()
-            self.assertEqual(sys.get_execution_context_value('a'), 1420)
-            sys.set_execution_context_value('a', 14200)
+            self.assertEqual(sys.get_execution_context_item('a'), 1420)
+            sys.set_execution_context_item('a', 14200)
 
         async def nested():
-            sys.set_execution_context_value('a', 142)
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_item('a', 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             await deeply_nested()
-            self.assertEqual(sys.get_execution_context_value('a'), 14200)
+            self.assertEqual(sys.get_execution_context_item('a'), 14200)
 
-        sys.set_execution_context_value('a', 42)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        sys.set_execution_context_item('a', 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen = nested()
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         with self.assertRaises(StopIteration):
             gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
 
     @preserve_global_context()
     def test_sys_exec_context_4(self):
         @types.coroutine
         def thats_deep():
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
-            sys.set_execution_context_value('a', 1420)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
+            sys.set_execution_context_item('a', 1420)
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 1420)
+            self.assertEqual(sys.get_execution_context_item('a'), 1420)
 
         @types.coroutine
         def deeply_nested():
             yield from thats_deep()
-            self.assertEqual(sys.get_execution_context_value('a'), 1420)
-            sys.set_execution_context_value('a', 14200)
+            self.assertEqual(sys.get_execution_context_item('a'), 1420)
+            sys.set_execution_context_item('a', 14200)
 
         @types.coroutine
         def nested():
-            sys.set_execution_context_value('a', 142)
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_item('a', 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             yield from deeply_nested()
-            self.assertEqual(sys.get_execution_context_value('a'), 14200)
+            self.assertEqual(sys.get_execution_context_item('a'), 14200)
 
-        sys.set_execution_context_value('a', 42)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        sys.set_execution_context_item('a', 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen = nested()
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
         with self.assertRaises(StopIteration):
             gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('a'), 42)
+        self.assertEqual(sys.get_execution_context_item('a'), 42)
 
     @preserve_global_context()
     def test_sys_exec_context_5(self):
         async def deeply_nested():
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
-            sys.set_execution_context_value('a', 14200)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
+            sys.set_execution_context_item('a', 14200)
 
         async def nested():
-            sys.set_execution_context_value('a', 142)
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            sys.set_execution_context_item('a', 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             yield
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
             async for i in deeply_nested():
                 yield i
-            self.assertEqual(sys.get_execution_context_value('a'), 142)
+            self.assertEqual(sys.get_execution_context_item('a'), 142)
 
         async def main():
-            sys.set_execution_context_value('a', 42)
-            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            sys.set_execution_context_item('a', 42)
+            self.assertEqual(sys.get_execution_context_item('a'), 42)
             gen = nested()
-            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            self.assertEqual(sys.get_execution_context_item('a'), 42)
             await gen.asend(None)
-            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            self.assertEqual(sys.get_execution_context_item('a'), 42)
             await gen.asend(None)
-            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            self.assertEqual(sys.get_execution_context_item('a'), 42)
             await gen.asend(None)
             with self.assertRaises(StopAsyncIteration):
                 await gen.asend(None)
-            self.assertEqual(sys.get_execution_context_value('a'), 42)
+            self.assertEqual(sys.get_execution_context_item('a'), 42)
 
         m = main()
         with self.assertRaises(StopIteration):
@@ -1413,40 +1397,40 @@ class ExecutionContextTest(unittest.TestCase):
     @preserve_global_context()
     def test_sys_exec_context_6(self):
         def deeply_nested():
-            self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+            self.assertEqual(sys.get_execution_context_item('aaa'), 123)
             yield
-            sys.set_execution_context_value('aaa', 42)
+            sys.set_execution_context_item('aaa', 42)
 
         def nested():
-            self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+            self.assertEqual(sys.get_execution_context_item('aaa'), 123)
             yield
             yield from deeply_nested()
-            self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+            self.assertEqual(sys.get_execution_context_item('aaa'), 123)
 
-        sys.set_execution_context_value('aaa', 123)
+        sys.set_execution_context_item('aaa', 123)
         gen = nested()
         gen.send(None)
         gen.send(None)
         with self.assertRaises(StopIteration):
             gen.send(None)
-        self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+        self.assertEqual(sys.get_execution_context_item('aaa'), 123)
 
     @preserve_global_context()
     def test_sys_exec_context_run_1(self):
         def worker():
             try:
-                return sys.get_execution_context_value('aaa', None)
+                return sys.get_execution_context_item('aaa', None)
             finally:
-                sys.set_execution_context_value('aaa', -1)
+                sys.set_execution_context_item('aaa', -1)
 
         # Set a value on the default context, let's call it (C1)
-        sys.set_execution_context_value('aaa', 123)
+        sys.set_execution_context_item('aaa', 123)
 
         ctx = sys.ExecutionContext()
         self.assertIsNone(ctx.run(worker))
         self.assertEqual(ctx.get('aaa', 'immutable'), 'immutable')
 
-        self.assertEqual(sys.get_execution_context_value('aaa'), 123)
+        self.assertEqual(sys.get_execution_context_item('aaa'), 123)
 
         ctx2 = sys.get_execution_context()
         self.assertEqual(ctx2.run(worker), 123)

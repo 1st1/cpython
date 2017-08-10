@@ -305,8 +305,8 @@ _gen_send_ex(PyGenObject *gen, PyThreadState *tstate,
 
 
 #define _GEN_PUSH_CONTEXT(gen, tstate)                          \
-    PyExecContextData *_ctx;                                   \
-    assert(!gen->gi_propagate_exec_context);                    \
+    PyExecContextData *_ctx;                                    \
+    assert(gen->gi_isolated_execution_context);                 \
     _ctx = tstate->exec_context;                                \
     tstate->exec_context = gen->gi_exec_context;                \
     gen->gi_exec_context = NULL;
@@ -323,13 +323,13 @@ gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
-    if (gen->gi_propagate_exec_context) {
-        result = _gen_send_ex(gen, tstate, arg, exc, closing);
-    }
-    else {
+    if (gen->gi_isolated_execution_context) {
         _GEN_PUSH_CONTEXT(gen, tstate)
         result = _gen_send_ex(gen, tstate, arg, exc, closing);
         _GEN_POP_CONTEXT(gen, tstate)
+    }
+    else {
+        result = _gen_send_ex(gen, tstate, arg, exc, closing);
     }
 
     return result;
@@ -585,13 +585,13 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
-    if (gen->gi_propagate_exec_context) {
-        result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
-    }
-    else {
+    if (gen->gi_isolated_execution_context) {
         _GEN_PUSH_CONTEXT(gen, tstate)
         result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
         _GEN_POP_CONTEXT(gen, tstate)
+    }
+    else {
+        result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
     }
 
     return result;
@@ -774,9 +774,9 @@ gen_getyieldfrom(PyGenObject *gen)
 }
 
 static PyObject *
-gen_get_propagate_exec_context(PyGenObject *op)
+gen_get_isolated_execution_context(PyGenObject *op)
 {
-    if (op->gi_propagate_exec_context) {
+    if (op->gi_isolated_execution_context) {
         Py_RETURN_TRUE;
     } else {
         Py_RETURN_FALSE;
@@ -784,14 +784,14 @@ gen_get_propagate_exec_context(PyGenObject *op)
 }
 
 static int
-gen_set_propagate_exec_context(PyGenObject *op, PyObject *value)
+gen_set_isolated_execution_context(PyGenObject *op, PyObject *value)
 {
     int is_true = PyObject_IsTrue(value);
     if (is_true < 0) {
         return -1;
     }
 
-    op->gi_propagate_exec_context = is_true;
+    op->gi_isolated_execution_context = is_true;
     return 0;
 }
 
@@ -802,9 +802,9 @@ static PyGetSetDef gen_getsetlist[] = {
      PyDoc_STR("qualified name of the generator")},
     {"gi_yieldfrom", (getter)gen_getyieldfrom, NULL,
      PyDoc_STR("object being iterated by yield from, or None")},
-    {"gi_propagate_exec_context",
-     (getter)gen_get_propagate_exec_context,
-     (setter)gen_set_propagate_exec_context,
+    {"gi_isolated_execution_context",
+     (getter)gen_get_isolated_execution_context,
+     (setter)gen_set_isolated_execution_context,
      NULL, NULL},
     {NULL} /* Sentinel */
 };
@@ -905,7 +905,7 @@ gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
     Py_INCREF(gen->gi_qualname);
 
     /* Access `tstate->exec_context` directly; it's OK if it is NULL. */
-    gen->gi_propagate_exec_context = 0;
+    gen->gi_isolated_execution_context = 1;
     Py_XINCREF(tstate->exec_context);
     gen->gi_exec_context = tstate->exec_context;
 
