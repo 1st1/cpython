@@ -8,6 +8,7 @@ extern "C" {
 struct _execcontextdata {
     PyObject_HEAD
     PyObject *ec_items;
+    PyExecContextData *ec_back;
 };  /* PyExecContextData */
 
 

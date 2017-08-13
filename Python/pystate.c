@@ -986,6 +986,7 @@ exec_ctx_data_dealloc(PyExecContextData *ctx)
 
     _PyObject_GC_UNTRACK((PyObject *)ctx);
     Py_CLEAR(ctx->ec_items);
+    Py_CLEAR(ctx->ec_back);
     PyObject_GC_Del(ctx);
 }
 
@@ -994,6 +995,7 @@ static int
 exec_ctx_data_traverse(PyExecContextData *ctx, visitproc visit, void *arg)
 {
     Py_VISIT(ctx->ec_items);
+    Py_VISIT(ctx->ec_back);
     return 0;
 }
 
@@ -1004,10 +1006,10 @@ exec_ctx_data_new(void)
     PyExecContextData *ctx;
     PyObject *items;
 
-    if (empty_exec_context != NULL) {
-        Py_INCREF(empty_exec_context);
-        return empty_exec_context;
-    }
+    // if (empty_exec_context != NULL) {
+    //     Py_INCREF(empty_exec_context);
+    //     return empty_exec_context;
+    // }
 
     items = PyDict_New();
     if (items == NULL) {
@@ -1020,14 +1022,15 @@ exec_ctx_data_new(void)
         return NULL;
     }
 
+    ctx->ec_back = NULL;
     ctx->ec_items = items;  /* borrow ref */
 
     _PyObject_GC_TRACK((PyObject*)ctx);
 
-    if (empty_exec_context == NULL) {
-        empty_exec_context = ctx;
-        Py_INCREF(ctx);
-    }
+    // if (empty_exec_context == NULL) {
+    //     empty_exec_context = ctx;
+    //     Py_INCREF(ctx);
+    // }
 
     return ctx;
 }
@@ -1051,6 +1054,9 @@ exec_ctx_data_clone(PyExecContextData *from_ctx)
         Py_DECREF(new_items);
         return NULL;
     }
+
+    ctx->ec_back = from_ctx->ec_back;
+    Py_XINCREF(ctx->ec_back);
 
     ctx->ec_items = new_items;
 
@@ -1097,8 +1103,14 @@ exec_ctx_data_get_item(PyExecContextData *ctx, PyObject *key, PyObject **val)
     assert(PyExecContextData_CheckExact(ctx));
 
     *val = PyDict_GetItemWithError(ctx->ec_items, key);
-    if (*val == NULL && PyErr_Occurred()) {
-        return -1;
+    if (*val == NULL) {
+        if (PyErr_Occurred()) {
+            return -1;
+        }
+
+        if (ctx->ec_back != NULL) {
+            return exec_ctx_data_get_item(ctx->ec_back, key, val);
+        }
     }
 
     return 0;
@@ -1220,6 +1232,39 @@ PyThreadState_GetExecContext(void)
 
     Py_INCREF(ctx);
     return ctx;
+}
+
+
+PyExecContextData *
+_PyThreadState_GetExecContextMerged(void)
+{
+    PyThreadState *tstate = exec_ctx_data_get_tstate();
+    PyExecContextData *new_ctx;
+    PyExecContextData *cur_ctx;
+
+    if (tstate->exec_context == NULL ||
+            tstate->exec_context->ec_back == NULL)
+    {
+        return PyThreadState_GetExecContext();
+    }
+
+    new_ctx = exec_ctx_data_new();
+    if (new_ctx == NULL) {
+        return NULL;
+    }
+
+    cur_ctx = tstate->exec_context;
+    assert(cur_ctx != NULL);
+
+    while (cur_ctx != NULL && cur_ctx->ec_items != NULL) {
+        if (PyDict_Merge(new_ctx->ec_items, cur_ctx->ec_items, 0)) {
+            Py_DECREF(new_ctx);
+            return NULL;
+        }
+        cur_ctx = cur_ctx->ec_back;
+    }
+
+    return new_ctx;
 }
 
 

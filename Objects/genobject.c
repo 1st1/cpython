@@ -306,15 +306,25 @@ _gen_send_ex(PyGenObject *gen, PyThreadState *tstate,
 
 #define _GEN_PUSH_CONTEXT(gen, tstate)                          \
     PyExecContextData *_ctx;                                    \
+    int is_gen = ((PyCodeObject *)(gen->gi_code))->co_flags &   \
+        (CO_GENERATOR | CO_ASYNC_GENERATOR);                    \
     assert(gen->gi_isolated_execution_context);                 \
+    assert(gen->gi_exec_context != NULL);                       \
     _ctx = tstate->exec_context;                                \
     tstate->exec_context = gen->gi_exec_context;                \
-    gen->gi_exec_context = NULL;
+    gen->gi_exec_context = NULL;                                \
+    if (is_gen) {                                               \
+        tstate->exec_context->ec_back = _ctx;                   \
+        Py_XINCREF(_ctx);                                       \
+    }
 
 
 #define _GEN_POP_CONTEXT(gen, tstate)                           \
     gen->gi_exec_context = tstate->exec_context;                \
-    tstate->exec_context = _ctx;
+    tstate->exec_context = _ctx;                                \
+    if (is_gen) {                                               \
+        Py_CLEAR(gen->gi_exec_context->ec_back);                \
+    }
 
 
 static inline PyObject *
@@ -323,7 +333,7 @@ gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
-    if (gen->gi_isolated_execution_context) {
+    if (gen->gi_isolated_execution_context && !gen->gi_running) {
         _GEN_PUSH_CONTEXT(gen, tstate)
         result = _gen_send_ex(gen, tstate, arg, exc, closing);
         _GEN_POP_CONTEXT(gen, tstate)
@@ -585,7 +595,7 @@ _gen_throw(PyGenObject *gen, int close_on_genexit,
     PyThreadState *tstate = PyThreadState_GET();
     PyObject *result;
 
-    if (gen->gi_isolated_execution_context) {
+    if (gen->gi_isolated_execution_context && !gen->gi_running) {
         _GEN_PUSH_CONTEXT(gen, tstate)
         result = _gen_throw_impl(gen, tstate, close_on_genexit, typ, val, tb);
         _GEN_POP_CONTEXT(gen, tstate)
@@ -881,7 +891,6 @@ static PyObject *
 gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
                       PyObject *name, PyObject *qualname)
 {
-    PyThreadState *tstate = PyThreadState_GET();
     PyGenObject *gen = PyObject_GC_New(PyGenObject, type);
     if (gen == NULL) {
         Py_DECREF(f);
@@ -904,10 +913,18 @@ gen_new_with_qualname(PyTypeObject *type, PyFrameObject *f,
         gen->gi_qualname = gen->gi_name;
     Py_INCREF(gen->gi_qualname);
 
+    if (f->f_code->co_flags & (CO_GENERATOR | CO_ASYNC_GENERATOR)) {
+        gen->gi_exec_context = PyExecContext_New();
+    }
+    else {
+        gen->gi_exec_context = _PyThreadState_GetExecContextMerged();
+    }
+    if (gen->gi_exec_context == NULL) {
+        return NULL;
+    }
+
     /* Access `tstate->exec_context` directly; it's OK if it is NULL. */
     gen->gi_isolated_execution_context = 1;
-    Py_XINCREF(tstate->exec_context);
-    gen->gi_exec_context = tstate->exec_context;
 
     _PyObject_GC_TRACK(gen);
     return (PyObject *)gen;

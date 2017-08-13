@@ -1651,7 +1651,7 @@ sys_get_execution_context(PyObject *self, PyObject *arg)
 {
     PyExecContextData *ctx_data;
     PyObject *res;
-    ctx_data = PyThreadState_GetExecContext();
+    ctx_data = _PyThreadState_GetExecContextMerged();
     if (ctx_data == NULL) {
         return NULL;
     }

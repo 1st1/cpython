@@ -367,6 +367,9 @@ PyAPI_FUNC(PyExecContextData*) PyThreadState_GetExecContext(void);
 
 PyAPI_FUNC(int) PyThreadState_SetExecContextItem(PyObject *, PyObject *);
 PyAPI_FUNC(int) PyThreadState_GetExecContextItem(PyObject *, PyObject **);
+
+PyAPI_FUNC(PyExecContextData *) _PyThreadState_GetExecContextMerged(void);
+
 #endif
 
 

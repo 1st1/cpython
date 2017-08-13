@@ -1401,12 +1401,51 @@ class ExecutionContextTest(unittest.TestCase):
             yield
             sys.set_execution_context_item('aaa', 42)
 
+            ec = sys.get_execution_context()
+            self.assertEqual(ec['spam'], 'ham')
+            self.assertEqual(ec['aaa'], 42)
+
         def nested():
             self.assertEqual(sys.get_execution_context_item('aaa'), 123)
             yield
             yield from deeply_nested()
             self.assertEqual(sys.get_execution_context_item('aaa'), 123)
 
+        sys.set_execution_context_item('spam', 'ham')
+        sys.set_execution_context_item('aaa', 123)
+        gen = nested()
+        gen.send(None)
+        gen.send(None)
+        with self.assertRaises(StopIteration):
+            gen.send(None)
+        self.assertEqual(sys.get_execution_context_item('aaa'), 123)
+
+    @preserve_global_context()
+    def test_sys_exec_context_7(self):
+        async def foo():
+            return sys.get_execution_context()
+
+        def deeply_nested():
+            self.assertEqual(sys.get_execution_context_item('aaa'), 123)
+            yield
+            sys.set_execution_context_item('aaa', 42)
+
+            coro = foo()
+            try:
+                coro.send(None)
+            except StopIteration as ex:
+                ec = ex.args[0]
+
+            self.assertEqual(ec['spam'], 'ham')
+            self.assertEqual(ec['aaa'], 42)
+
+        def nested():
+            self.assertEqual(sys.get_execution_context_item('aaa'), 123)
+            yield
+            yield from deeply_nested()
+            self.assertEqual(sys.get_execution_context_item('aaa'), 123)
+
+        sys.set_execution_context_item('spam', 'ham')
         sys.set_execution_context_item('aaa', 123)
         gen = nested()
         gen.send(None)
