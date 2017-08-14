@@ -11,6 +11,12 @@ struct _execcontextdata {
 };  /* PyExecContextData */
 
 
+struct _execcontextitem {
+    PyObject_HEAD
+    PyObject *ei_desc;
+};  /* PyExecContextItem */
+
+
 #ifdef __cplusplus
 }
 #endif

@@ -1092,11 +1092,13 @@ exec_ctx_data_get(void)
 
 /* *val will contain a borrowed ref */
 static int
-exec_ctx_data_get_item(PyExecContextData *ctx, PyObject *key, PyObject **val)
+exec_ctx_data_get_item(PyExecContextData *ctx, PyExecContextItem *key,
+                       PyObject **val)
 {
     assert(PyExecContextData_CheckExact(ctx));
+    assert(PyExecContextItem_CheckExact(key));
 
-    *val = PyDict_GetItemWithError(ctx->ec_items, key);
+    *val = PyDict_GetItemWithError(ctx->ec_items, (PyObject*)key);
     if (*val == NULL && PyErr_Occurred()) {
         return -1;
     }
@@ -1106,15 +1108,17 @@ exec_ctx_data_get_item(PyExecContextData *ctx, PyObject *key, PyObject **val)
 
 
 static PyExecContextData *
-exec_ctx_data_set_item(PyExecContextData *ctx, PyObject *key, PyObject *val)
+exec_ctx_data_set_item(PyExecContextData *ctx, PyExecContextItem *key,
+                       PyObject *val)
 {
     PyExecContextData *new_ctx = NULL;
     int res;
 
     assert(PyExecContextData_CheckExact(ctx));
+    assert(PyExecContextItem_CheckExact(key));
 
     if (val == NULL || val == Py_None) {
-        res = PyDict_Contains(ctx->ec_items, key);
+        res = PyDict_Contains(ctx->ec_items, (PyObject *)key);
         switch (res) {
         case -1:
             /* An error during "contains" check */
@@ -1125,7 +1129,7 @@ exec_ctx_data_set_item(PyExecContextData *ctx, PyObject *key, PyObject *val)
             if (new_ctx == NULL) {
                 goto error;
             }
-            if (PyDict_DelItem(new_ctx->ec_items, key)) {
+            if (PyDict_DelItem(new_ctx->ec_items, (PyObject *)key)) {
                 goto error;
             }
             return new_ctx;
@@ -1142,7 +1146,7 @@ exec_ctx_data_set_item(PyExecContextData *ctx, PyObject *key, PyObject *val)
         goto error;
     }
 
-    if (PyDict_SetItem(new_ctx->ec_items, key, val)) {
+    if (PyDict_SetItem(new_ctx->ec_items, (PyObject *)key, val)) {
         goto error;
     }
 
@@ -1154,7 +1158,92 @@ error:
 }
 
 
+/* Execution Context Item */
+
+
+static void
+exec_ctx_item_dealloc(PyExecContextItem *item)
+{
+    Py_CLEAR(item->ei_desc);
+    Py_TYPE(item)->tp_free((PyObject *)item);
+}
+
+
+static PyObject *
+exec_ctx_item_set(PyExecContextItem *item, PyObject *arg)
+{
+    assert(PyExecContextItem_CheckExact(item));
+
+    if (PyThreadState_SetExecContextItem(item, arg)) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+
+static PyObject *
+exec_ctx_item_get(PyExecContextItem *item, PyObject *arg)
+{
+    PyObject *val;
+
+    assert(PyExecContextItem_CheckExact(item));
+
+    if (PyThreadState_GetExecContextItem(item, &val)) {
+        return NULL;
+    }
+
+    if (val == NULL) {
+        Py_RETURN_NONE;
+    }
+
+    return val;
+}
+
+
+static PyMethodDef PyExecContextItem_methods[] = {
+    {"set", (PyCFunction)exec_ctx_item_set, METH_O, NULL},
+    {"get", (PyCFunction)exec_ctx_item_get, METH_NOARGS, NULL},
+    {NULL, NULL}                        /* Sentinel */
+};
+
+
+PyTypeObject PyExecContextItem_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "ContextItem",
+    sizeof(PyExecContextItem),
+    .tp_methods = PyExecContextItem_methods,
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_dealloc = (destructor)exec_ctx_item_dealloc,
+};
+
+
+static PyExecContextItem *
+exec_ctx_item_new(PyObject *desc)
+{
+    PyExecContextItem *item;
+
+    item = PyObject_New(PyExecContextItem, &PyExecContextItem_Type);
+    if (item == NULL) {
+        return NULL;
+    }
+
+    Py_XINCREF(desc);
+    item->ei_desc = desc;
+
+    return item;
+}
+
+
 /* Execution Context: Public C API */
+
+
+PyExecContextItem *
+PyExecContext_NewItem(PyObject *desc)
+{
+    return exec_ctx_item_new(desc);
+}
 
 
 PyExecContextData *
@@ -1165,14 +1254,16 @@ PyExecContext_New(void)
 
 
 PyExecContextData *
-PyExecContext_SetItem(PyExecContextData *ctx, PyObject *key, PyObject *val)
+PyExecContext_SetItem(PyExecContextData *ctx,
+                      PyExecContextItem *key, PyObject *val)
 {
     return exec_ctx_data_set_item(ctx, key, val);
 }
 
 
 int
-PyExecContext_GetItem(PyExecContextData *ctx, PyObject *key, PyObject **val)
+PyExecContext_GetItem(PyExecContextData *ctx,
+                      PyExecContextItem *key, PyObject **val)
 {
     if (exec_ctx_data_get_item(ctx, key, val)) {
         return -1;
@@ -1224,7 +1315,7 @@ PyThreadState_GetExecContext(void)
 
 
 int
-PyThreadState_SetExecContextItem(PyObject *key, PyObject *val)
+PyThreadState_SetExecContextItem(PyExecContextItem *key, PyObject *val)
 {
     PyExecContextData *ctx;
     PyExecContextData *new_ctx;
@@ -1266,7 +1357,7 @@ PyThreadState_SetExecContextItem(PyObject *key, PyObject *val)
 
 
 int
-PyThreadState_GetExecContextItem(PyObject *key, PyObject **val)
+PyThreadState_GetExecContextItem(PyExecContextItem *key, PyObject **val)
 {
     PyExecContextData *ctx;
     int res;

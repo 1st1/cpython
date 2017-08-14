@@ -20,9 +20,13 @@ struct _frame; /* Forward declaration for PyFrameObject. */
 
 
 typedef struct _execcontextdata PyExecContextData;
+typedef struct _execcontextitem PyExecContextItem;
+PyAPI_DATA(PyTypeObject) PyExecContextData_Type;
+PyAPI_DATA(PyTypeObject) PyExecContextItem_Type;
 #define PyExecContextData_CheckExact(op) \
         (Py_TYPE(op) == &PyExecContextData_Type)
-PyAPI_DATA(PyTypeObject) PyExecContextData_Type;
+#define PyExecContextItem_CheckExact(op) \
+        (Py_TYPE(op) == &PyExecContextItem_Type)
 
 
 #ifdef Py_LIMITED_API
@@ -357,16 +361,20 @@ PyAPI_DATA(PyThreadFrameGetter) _PyThreadState_GetFrame;
 
 
 #ifndef Py_LIMITED_API
+PyAPI_FUNC(PyExecContextItem *) PyExecContext_NewItem(PyObject *);
+
 PyAPI_FUNC(PyExecContextData *) PyExecContext_New(void);
-PyAPI_FUNC(PyExecContextData *) PyExecContext_SetItem(PyExecContextData *,
-                                                      PyObject *, PyObject *);
-PyAPI_FUNC(int) PyExecContext_GetItem(PyExecContextData *,
-                                      PyObject *, PyObject **);
-PyAPI_FUNC(int) PyThreadState_SetExecContext(PyExecContextData *);
+PyAPI_FUNC(PyExecContextData *) PyExecContext_SetItem(
+    PyExecContextData *, PyExecContextItem *, PyObject *);
+PyAPI_FUNC(int) PyExecContext_GetItem(
+    PyExecContextData *, PyExecContextItem *, PyObject **);
+
 PyAPI_FUNC(PyExecContextData*) PyThreadState_GetExecContext(void);
 
-PyAPI_FUNC(int) PyThreadState_SetExecContextItem(PyObject *, PyObject *);
-PyAPI_FUNC(int) PyThreadState_GetExecContextItem(PyObject *, PyObject **);
+PyAPI_FUNC(int) PyThreadState_SetExecContextItem(
+    PyExecContextItem *, PyObject *);
+PyAPI_FUNC(int) PyThreadState_GetExecContextItem(
+    PyExecContextItem *, PyObject **);
 #endif
 
 
