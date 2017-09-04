@@ -809,7 +809,7 @@ static void
 print_exception_recursive(PyObject *f, PyObject *value, PyObject *seen)
 {
     int err = 0, res;
-    PyObject *cause, *context;
+    PyObject *cause, *context, *details;
 
     if (seen != NULL) {
         /* Exception chaining */
@@ -846,8 +846,20 @@ print_exception_recursive(PyObject *f, PyObject *value, PyObject *seen)
         }
     }
     print_exception(f, value);
-    if (err != 0)
+    if (err == 0) {
+        details = PyException_GetDetails(value);
+        if (details != NULL) {
+            err |= PyFile_WriteString("\nDetails: ", f);
+            if (!err) {
+                PyFile_WriteObject(details, f, Py_PRINT_RAW);
+                err |= PyFile_WriteString("\n", f);
+            }
+            Py_XDECREF(details);
+        }
+    }
+    if (err != 0) {
         PyErr_Clear();
+    }
 }
 
 void

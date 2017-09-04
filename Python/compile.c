@@ -172,6 +172,9 @@ static int compiler_addop_o(struct compiler *, int, PyObject *, PyObject *);
 static int compiler_addop_i(struct compiler *, int, Py_ssize_t);
 static int compiler_addop_j(struct compiler *, int, basicblock *, int);
 static int compiler_error(struct compiler *, const char *);
+static int compiler_error_with_details(struct compiler *, const char *,
+                                       const char *);
+
 static int compiler_nameop(struct compiler *, identifier, expr_context_ty);
 
 static PyCodeObject *compiler_mod(struct compiler *, mod_ty);
@@ -4748,7 +4751,8 @@ compiler_in_loop(struct compiler *c) {
 */
 
 static int
-compiler_error(struct compiler *c, const char *errstr)
+compiler_error_with_details(struct compiler *c, const char *errstr,
+                            const char *errdetails)
 {
     PyObject *loc;
     PyObject *u = NULL, *v = NULL;
@@ -4766,11 +4770,21 @@ compiler_error(struct compiler *c, const char *errstr)
     if (!v)
         goto exit;
     PyErr_SetObject(PyExc_SyntaxError, v);
+    if (errdetails != NULL) {
+        PyErr_SetDetails(errdetails);
+    }
  exit:
     Py_DECREF(loc);
     Py_XDECREF(u);
     Py_XDECREF(v);
     return 0;
+}
+
+
+static int
+compiler_error(struct compiler *c, const char *errstr)
+{
+    return compiler_error_with_details(c, errstr, NULL);
 }
 
 static int

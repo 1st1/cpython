@@ -157,6 +157,38 @@ PyErr_SetString(PyObject *exception, const char *string)
     Py_XDECREF(value);
 }
 
+void
+PyErr_SetDetails(const char *string)
+{
+    PyObject *typ;
+    PyObject *val;
+    PyObject *tb;
+
+    PyErr_Fetch(&typ, &val, &tb);
+    if (typ == NULL) {
+        /* No exception is set. */
+        PyErr_BadInternalCall();
+        return;
+    }
+
+    PyObject *details = PyUnicode_FromString(string);
+    if (details == NULL) {
+        /* Could not convert 'string' to a unicode object;
+           ignore the error as most likely we are just out
+           of memory. */
+        PyErr_Restore(typ, val, tb);
+        return;
+    }
+
+    PyErr_NormalizeException(&typ, &val, &tb);
+    assert(val != NULL);
+
+    PyBaseExceptionObject *ex = (PyBaseExceptionObject*)val;
+    Py_XDECREF(ex->details);
+    ex->details = details;  /* borrow ref */
+
+    PyErr_Restore(typ, val, tb);
+}
 
 PyObject* _Py_HOT_FUNCTION
 PyErr_Occurred(void)

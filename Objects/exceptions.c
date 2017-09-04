@@ -38,7 +38,7 @@ BaseException_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         return NULL;
     /* the dict is created on the fly in PyObject_GenericSetAttr */
     self->dict = NULL;
-    self->traceback = self->cause = self->context = NULL;
+    self->traceback = self->cause = self->context = self->details = NULL;
     self->suppress_context = 0;
 
     if (args) {
@@ -171,12 +171,20 @@ PyDoc_STRVAR(with_traceback_doc,
 "Exception.with_traceback(tb) --\n\
     set self.__traceback__ to tb and return self.");
 
+static PyObject *
+BaseException_with_details(PyObject *self, PyObject *details)
+{
+    PyException_SetDetails(self, details);
+    Py_INCREF(self);
+    return self;
+}
 
 static PyMethodDef BaseException_methods[] = {
    {"__reduce__", (PyCFunction)BaseException_reduce, METH_NOARGS },
    {"__setstate__", (PyCFunction)BaseException_setstate, METH_O },
    {"with_traceback", (PyCFunction)BaseException_with_traceback, METH_O,
     with_traceback_doc},
+   {"with_details", (PyCFunction)BaseException_with_details, METH_O, NULL},
    {NULL, NULL, 0, NULL},
 };
 
@@ -333,6 +341,22 @@ PyException_GetContext(PyObject *self) {
     PyObject *context = ((PyBaseExceptionObject *)self)->context;
     Py_XINCREF(context);
     return context;
+}
+
+PyObject *
+PyException_SetDetails(PyObject *self, PyObject *details)
+{
+    Py_XSETREF(((PyBaseExceptionObject *)self)->details, details);
+    Py_XINCREF(details);
+    return details;
+}
+
+PyObject *
+PyException_GetDetails(PyObject *self)
+{
+    PyObject *details = ((PyBaseExceptionObject *)self)->details;
+    Py_XINCREF(details);
+    return details;
 }
 
 /* Steals a reference to context */

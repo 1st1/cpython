@@ -3007,6 +3007,10 @@ _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
                     PyErr_SetString(PyExc_TypeError,
                                     "cannot 'yield from' a coroutine object "
                                     "in a non-coroutine generator");
+                    PyErr_SetDetails(
+                        "most likely the generator needs to be decorated "
+                        "with @types.coroutine (or @asyncio.coroutine if "
+                        "it is an asyncio program)");
                     goto error;
                 }
             }

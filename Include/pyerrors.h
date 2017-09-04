@@ -11,6 +11,7 @@ extern "C" {
 #define PyException_HEAD PyObject_HEAD PyObject *dict;\
              PyObject *args; PyObject *traceback;\
              PyObject *context; PyObject *cause;\
+             PyObject *details; \
              char suppress_context;
 
 typedef struct {
@@ -83,6 +84,11 @@ PyAPI_FUNC(void) PyErr_SetString(
     PyObject *exception,
     const char *string   /* decoded from utf-8 */
     );
+#ifndef Py_LIMITED_API
+PyAPI_FUNC(void) PyErr_SetDetails(
+    const char *string   /* decoded from utf-8 */
+    );
+#endif
 PyAPI_FUNC(PyObject *) PyErr_Occurred(void);
 PyAPI_FUNC(void) PyErr_Clear(void);
 PyAPI_FUNC(void) PyErr_Fetch(PyObject **, PyObject **, PyObject **);
@@ -128,6 +134,11 @@ PyAPI_FUNC(PyObject *) PyException_GetContext(PyObject *);
 PyAPI_FUNC(void) PyException_SetContext(PyObject *, PyObject *);
 #ifndef Py_LIMITED_API
 PyAPI_FUNC(void) _PyErr_ChainExceptions(PyObject *, PyObject *, PyObject *);
+#endif
+
+#ifndef Py_LIMITED_API
+PyAPI_FUNC(PyObject *) PyException_SetDetails(PyObject *, PyObject *);
+PyAPI_FUNC(PyObject *) PyException_GetDetails(PyObject *);
 #endif
 
 /* */
