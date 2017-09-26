@@ -1638,9 +1638,10 @@ ast_for_funcdef_impl(struct compiling *c, const node *n,
 static stmt_ty
 ast_for_async_funcdef(struct compiling *c, const node *n, asdl_seq *decorator_seq)
 {
-    /* async_funcdef: ASYNC funcdef */
+    /* async_funcdef: 'async' funcdef */
     REQ(n, async_funcdef);
-    REQ(CHILD(n, 0), ASYNC);
+    REQ(CHILD(n, 0), NAME);
+    assert(strcmp(STR(CHILD(n, 0)), "async") == 0);
     REQ(CHILD(n, 1), funcdef);
 
     return ast_for_funcdef_impl(c, CHILD(n, 1), decorator_seq,
@@ -1659,9 +1660,10 @@ ast_for_funcdef(struct compiling *c, const node *n, asdl_seq *decorator_seq)
 static stmt_ty
 ast_for_async_stmt(struct compiling *c, const node *n)
 {
-    /* async_stmt: ASYNC (funcdef | with_stmt | for_stmt) */
+    /* async_stmt: 'async' (funcdef | with_stmt | for_stmt) */
     REQ(n, async_stmt);
-    REQ(CHILD(n, 0), ASYNC);
+    REQ(CHILD(n, 0), NAME);
+    assert(strcmp(STR(CHILD(n, 0)), "async") == 0);
 
     switch (TYPE(CHILD(n, 1))) {
         case funcdef:
@@ -1780,7 +1782,7 @@ count_comp_fors(struct compiling *c, const node *n)
     is_async = 0;
     n_fors++;
     REQ(n, comp_for);
-    if (TYPE(CHILD(n, 0)) == ASYNC) {
+    if (TYPE(CHILD(n, 0)) == NAME && strcmp(STR(CHILD(n, 0)), "async") == 0) {
         is_async = 1;
     }
     if (NCH(n) == (5 + is_async)) {
@@ -1855,7 +1857,8 @@ ast_for_comprehension(struct compiling *c, const node *n)
 
         REQ(n, comp_for);
 
-        if (TYPE(CHILD(n, 0)) == ASYNC) {
+        if (TYPE(CHILD(n, 0)) == NAME &&
+                strcmp(STR(CHILD(n, 0)), "async") == 0) {
             is_async = 1;
         }
 
@@ -2466,7 +2469,7 @@ ast_for_atom_expr(struct compiling *c, const node *n)
     REQ(n, atom_expr);
     nch = NCH(n);
 
-    if (TYPE(CHILD(n, 0)) == AWAIT) {
+    if (TYPE(CHILD(n, 0)) == NAME && strcmp(STR(CHILD(n, 0)), "await") == 0) {
         start = 1;
         assert(nch > 1);
     }
@@ -2493,7 +2496,7 @@ ast_for_atom_expr(struct compiling *c, const node *n)
     }
 
     if (start) {
-        /* there was an AWAIT */
+        /* there was an 'await' */
         return Await(e, LINENO(n), n->n_col_offset, c->c_arena);
     }
     else {
@@ -2558,7 +2561,7 @@ ast_for_expr(struct compiling *c, const node *n)
        term: factor (('*'|'@'|'/'|'%'|'//') factor)*
        factor: ('+'|'-'|'~') factor | power
        power: atom_expr ['**' factor]
-       atom_expr: [AWAIT] atom trailer*
+       atom_expr: ['await'] atom trailer*
        yield_expr: 'yield' [yield_arg]
     */
 

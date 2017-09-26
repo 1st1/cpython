@@ -64,8 +64,6 @@ extern "C" {
 #define ELLIPSIS        52
 /* Don't forget to update the table _PyParser_TokenNames in tokenizer.c! */
 #define OP		53
-#define AWAIT		54
-#define ASYNC		55
 #define ERRORTOKEN	56
 /* These aren't used by the C tokenizer but are needed for tokenize.py */
 #define COMMENT		57
