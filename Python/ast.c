@@ -1782,15 +1782,28 @@ count_comp_fors(struct compiling *c, const node *n)
     is_async = 0;
     n_fors++;
     REQ(n, comp_for);
-    if (TYPE(CHILD(n, 0)) == NAME && strcmp(STR(CHILD(n, 0)), "async") == 0) {
-        is_async = 1;
+
+    if (NCH(n) == 2) {
+        REQ(CHILD(n, 0), NAME);
+        assert(strcmp(STR(CHILD(n, 0)), "async") == 0);
+        n = CHILD(n, 1);
     }
-    if (NCH(n) == (5 + is_async)) {
-        n = CHILD(n, 4 + is_async);
+    else if (NCH(n) == 1) {
+        n = CHILD(n, 0);
+    }
+    else {
+        goto error;
+    }
+
+    REQ(n, sync_comp_for);
+
+    if (NCH(n) == 5) {
+        n = CHILD(n, 4);
     }
     else {
         return n_fors;
     }
+
   count_comp_iter:
     REQ(n, comp_iter);
     n = CHILD(n, 0);
@@ -1805,6 +1818,7 @@ count_comp_fors(struct compiling *c, const node *n)
             return n_fors;
     }
 
+  error:
     /* Should never be reached */
     PyErr_SetString(PyExc_SystemError,
                     "logic error in count_comp_fors");
@@ -1857,16 +1871,21 @@ ast_for_comprehension(struct compiling *c, const node *n)
 
         REQ(n, comp_for);
 
-        if (TYPE(CHILD(n, 0)) == NAME &&
-                strcmp(STR(CHILD(n, 0)), "async") == 0) {
+        if (NCH(n) == 2) {
             is_async = 1;
+            n = CHILD(n, 1);
+        }
+        else {
+            n = CHILD(n, 0);
         }
 
-        for_ch = CHILD(n, 1 + is_async);
+        REQ(n, sync_comp_for);
+
+        for_ch = CHILD(n, 1);
         t = ast_for_exprlist(c, for_ch, Store);
         if (!t)
             return NULL;
-        expression = ast_for_expr(c, CHILD(n, 3 + is_async));
+        expression = ast_for_expr(c, CHILD(n, 3));
         if (!expression)
             return NULL;
 
@@ -1883,11 +1902,11 @@ ast_for_comprehension(struct compiling *c, const node *n)
         if (!comp)
             return NULL;
 
-        if (NCH(n) == (5 + is_async)) {
+        if (NCH(n) == 5) {
             int j, n_ifs;
             asdl_seq *ifs;
 
-            n = CHILD(n, 4 + is_async);
+            n = CHILD(n, 4);
             n_ifs = count_comp_ifs(c, n);
             if (n_ifs == -1)
                 return NULL;
