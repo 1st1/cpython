@@ -1,232 +1,39 @@
-This is Python version 3.7.0 alpha 1
-====================================
+Fork of CPython with ``yield_in`` and ``yield_out`` parameters
+for ``sys.set_asyncgen_hooks()``.
 
-.. image:: https://travis-ci.org/python/cpython.svg?branch=master
-   :alt: CPython build status on Travis CI
-   :target: https://travis-ci.org/python/cpython
+Example:
 
-.. image:: https://ci.appveyor.com/api/projects/status/4mew1a93xdkbf5ua/branch/master?svg=true
-   :alt: CPython build status on Appveyor
-   :target: https://ci.appveyor.com/project/python/cpython/branch/master
+.. code:: python
 
-.. image:: https://codecov.io/gh/python/cpython/branch/master/graph/badge.svg
-   :alt: CPython code coverage on Codecov
-   :target: https://codecov.io/gh/python/cpython
+    import asyncio
+    import sys
 
-Copyright (c) 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011,
-2012, 2013, 2014, 2015, 2016, 2017 Python Software Foundation.  All rights
-reserved.
 
-See the end of this file for further copyright and license information.
+    async def agen():
+        i = 0
+        while True:
+            await asyncio.sleep(0.1)
+            yield i
+            i += 1
+            if i > 10:
+                break
 
-.. contents::
 
-General Information
--------------------
+    async def main():
+        async for i in agen():
+            print(f'just slept {i}')
 
-- Website: https://www.python.org
-- Source code: https://github.com/python/cpython
-- Issue tracker: https://bugs.python.org
-- Documentation: https://docs.python.org
-- Developer's Guide: https://devguide.python.org/
 
-Contributing to CPython
------------------------
+    def yield_in(g):
+        print('---- YIELD IN', g)
 
-For more complete instructions on contributing to CPython development,
-see the `Developer Guide`_.
 
-.. _Developer Guide: https://devguide.python.org/
+    def yield_out(g):
+        print('---- YIELD OUT', g)
 
-Using Python
-------------
 
-Installable Python kits, and information about using Python, are available at
-`python.org`_.
-
-.. _python.org: https://www.python.org/
-
-Build Instructions
-------------------
-
-On Unix, Linux, BSD, macOS, and Cygwin::
-
-    ./configure
-    make
-    make test
-    sudo make install
-
-This will install Python as python3.
-
-You can pass many options to the configure script; run ``./configure --help``
-to find out more.  On macOS and Cygwin, the executable is called ``python.exe``;
-elsewhere it's just ``python``.
-
-On macOS, if you have configured Python with ``--enable-framework``, you
-should use ``make frameworkinstall`` to do the installation.  Note that this
-installs the Python executable in a place that is not normally on your PATH,
-you may want to set up a symlink in ``/usr/local/bin``.
-
-On Windows, see `PCbuild/readme.txt
-<https://github.com/python/cpython/blob/master/PCbuild/readme.txt>`_.
-
-If you wish, you can create a subdirectory and invoke configure from there.
-For example::
-
-    mkdir debug
-    cd debug
-    ../configure --with-pydebug
-    make
-    make test
-
-(This will fail if you *also* built at the top-level directory.  You should do
-a ``make clean`` at the toplevel first.)
-
-To get an optimized build of Python, ``configure --enable-optimizations``
-before you run ``make``.  This sets the default make targets up to enable
-Profile Guided Optimization (PGO) and may be used to auto-enable Link Time
-Optimization (LTO) on some platforms.  For more details, see the sections
-below.
-
-
-Profile Guided Optimization
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-PGO takes advantage of recent versions of the GCC or Clang compilers.  If ran,
-``make profile-opt`` will do several steps.
-
-First, the entire Python directory is cleaned of temporary files that may have
-resulted in a previous compilation.
-
-Then, an instrumented version of the interpreter is built, using suitable
-compiler flags for each flavour. Note that this is just an intermediary step
-and the binary resulted after this step is not good for real life workloads, as
-it has profiling instructions embedded inside.
-
-After this instrumented version of the interpreter is built, the Makefile will
-automatically run a training workload. This is necessary in order to profile
-the interpreter execution. Note also that any output, both stdout and stderr,
-that may appear at this step is suppressed.
-
-Finally, the last step is to rebuild the interpreter, using the information
-collected in the previous one. The end result will be a Python binary that is
-optimized and suitable for distribution or production installation.
-
-
-Link Time Optimization
-^^^^^^^^^^^^^^^^^^^^^^
-
-Enabled via configure's ``--with-lto`` flag.  LTO takes advantage of the
-ability of recent compiler toolchains to optimize across the otherwise
-arbitrary ``.o`` file boundary when building final executables or shared
-libraries for additional performance gains.
-
-
-What's New
-----------
-
-We have a comprehensive overview of the changes in the `What's New in Python
-3.7 <https://docs.python.org/3.7/whatsnew/3.7.html>`_ document.  For a more
-detailed change log, read `Misc/NEWS
-<https://github.com/python/cpython/blob/master/Misc/NEWS.d>`_, but a full
-accounting of changes can only be gleaned from the `commit history
-<https://github.com/python/cpython/commits/master>`_.
-
-If you want to install multiple versions of Python see the section below
-entitled "Installing multiple versions".
-
-
-Documentation
--------------
-
-`Documentation for Python 3.7 <https://docs.python.org/3.7/>`_ is online,
-updated daily.
-
-It can also be downloaded in many formats for faster access.  The documentation
-is downloadable in HTML, PDF, and reStructuredText formats; the latter version
-is primarily for documentation authors, translators, and people with special
-formatting requirements.
-
-For information about building Python's documentation, refer to `Doc/README.rst
-<https://github.com/python/cpython/blob/master/Doc/README.rst>`_.
-
-
-Converting From Python 2.x to 3.x
----------------------------------
-
-Significant backward incompatible changes were made for the release of Python
-3.0, which may cause programs written for Python 2 to fail when run with Python
-3.  For more information about porting your code from Python 2 to Python 3, see
-the `Porting HOWTO <https://docs.python.org/3/howto/pyporting.html>`_.
-
-
-Testing
--------
-
-To test the interpreter, type ``make test`` in the top-level directory.  The
-test set produces some output.  You can generally ignore the messages about
-skipped tests due to optional features which can't be imported.  If a message
-is printed about a failed test or a traceback or core dump is produced,
-something is wrong.
-
-By default, tests are prevented from overusing resources like disk space and
-memory.  To enable these tests, run ``make testall``.
-
-If any tests fail, you can re-run the failing test(s) in verbose mode::
-
-    make test TESTOPTS="-v test_that_failed"
-
-If the failure persists and appears to be a problem with Python rather than
-your environment, you can `file a bug report <https://bugs.python.org>`_ and
-include relevant output from that command to show the issue.
-
-
-Installing multiple versions
-----------------------------
-
-On Unix and Mac systems if you intend to install multiple versions of Python
-using the same installation prefix (``--prefix`` argument to the configure
-script) you must take care that your primary python executable is not
-overwritten by the installation of a different version.  All files and
-directories installed using ``make altinstall`` contain the major and minor
-version and can thus live side-by-side.  ``make install`` also creates
-``${prefix}/bin/python3`` which refers to ``${prefix}/bin/pythonX.Y``.  If you
-intend to install multiple versions using the same prefix you must decide which
-version (if any) is your "primary" version.  Install that version using ``make
-install``.  Install all other versions using ``make altinstall``.
-
-For example, if you want to install Python 2.7, 3.6, and 3.7 with 3.7 being the
-primary version, you would execute ``make install`` in your 3.7 build directory
-and ``make altinstall`` in the others.
-
-
-Issue Tracker and Mailing List
-------------------------------
-
-Bug reports are welcome!  You can use the `issue tracker
-<https://bugs.python.org>`_ to report bugs, and/or submit pull requests `on
-GitHub <https://github.com/python/cpython>`_.
-
-You can also follow development discussion on the `python-dev mailing list
-<https://mail.python.org/mailman/listinfo/python-dev/>`_.
-
-
-Proposals for enhancement
--------------------------
-
-If you have a proposal to change Python, you may want to send an email to the
-comp.lang.python or `python-ideas`_ mailing lists for initial feedback.  A
-Python Enhancement Proposal (PEP) may be submitted if your idea gains ground.
-All current PEPs, as well as guidelines for submitting a new PEP, are listed at
-`python.org/dev/peps/ <https://www.python.org/dev/peps/>`_.
-
-.. _python-ideas: https://mail.python.org/mailman/listinfo/python-ideas/
-
-
-Release Schedule
-----------------
-
-See :pep:`537` for Python 3.7 release details.
+    sys.set_asyncgen_hooks(yield_in=yield_in, yield_out=yield_out)
+    asyncio.get_event_loop().run_until_complete(main())
 
 
 Copyright and License Information

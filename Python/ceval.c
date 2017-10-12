@@ -4518,6 +4518,38 @@ _PyEval_GetAsyncGenFinalizer(void)
     return tstate->async_gen_finalizer;
 }
 
+void
+_PyEval_SetAsyncGenYieldIn(PyObject *yield_in)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+
+    Py_XINCREF(yield_in);
+    Py_XSETREF(tstate->async_gen_yield_in, yield_in);
+}
+
+PyObject *
+_PyEval_GetAsyncGenYieldIn(void)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    return tstate->async_gen_yield_in;
+}
+
+void
+_PyEval_SetAsyncGenYieldOut(PyObject *yield_out)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+
+    Py_XINCREF(yield_out);
+    Py_XSETREF(tstate->async_gen_yield_out, yield_out);
+}
+
+PyObject *
+_PyEval_GetAsyncGenYieldOut(void)
+{
+    PyThreadState *tstate = PyThreadState_GET();
+    return tstate->async_gen_yield_out;
+}
+
 PyObject *
 PyEval_GetBuiltins(void)
 {

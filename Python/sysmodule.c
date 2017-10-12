@@ -764,55 +764,57 @@ generators hooks.  The attributes are read only.");
 static PyStructSequence_Field asyncgen_hooks_fields[] = {
     {"firstiter", "Hook to intercept first iteration"},
     {"finalizer", "Hook to intercept finalization"},
+    {"yield_in", "yield_in"},
+    {"yield_out", "yield_out"},
     {0}
 };
 
 static PyStructSequence_Desc asyncgen_hooks_desc = {
     "asyncgen_hooks",          /* name */
     asyncgen_hooks_doc,        /* doc */
-    asyncgen_hooks_fields ,    /* fields */
-    2
+    asyncgen_hooks_fields,     /* fields */
+    4
 };
 
 
 static PyObject *
 sys_set_asyncgen_hooks(PyObject *self, PyObject *args, PyObject *kw)
 {
-    static char *keywords[] = {"firstiter", "finalizer", NULL};
+    static char *keywords[] = {
+        "firstiter", "finalizer", "yield_in", "yield_out", NULL
+    };
+
     PyObject *firstiter = NULL;
     PyObject *finalizer = NULL;
+    PyObject *yield_in = NULL;
+    PyObject *yield_out = NULL;
 
     if (!PyArg_ParseTupleAndKeywords(
-            args, kw, "|OO", keywords,
-            &firstiter, &finalizer)) {
+            args, kw, "|OOOO", keywords,
+            &firstiter, &finalizer, &yield_in, &yield_out)) {
         return NULL;
     }
 
-    if (finalizer && finalizer != Py_None) {
-        if (!PyCallable_Check(finalizer)) {
-            PyErr_Format(PyExc_TypeError,
-                         "callable finalizer expected, got %.50s",
-                         Py_TYPE(finalizer)->tp_name);
-            return NULL;
-        }
-        _PyEval_SetAsyncGenFinalizer(finalizer);
-    }
-    else if (finalizer == Py_None) {
-        _PyEval_SetAsyncGenFinalizer(NULL);
+#define _SET(VAR, CVAR)                                             \
+    if (VAR && VAR != Py_None) {                                    \
+        if (!PyCallable_Check(VAR)) {                               \
+            PyErr_Format(PyExc_TypeError,                           \
+                         "callable " #VAR " expected, got %.50s",   \
+                         Py_TYPE(VAR)->tp_name);                    \
+            return NULL;                                            \
+        }                                                           \
+        _PyEval_SetAsyncGen##CVAR(VAR);                             \
+    }                                                               \
+    else if (VAR == Py_None) {                                      \
+        _PyEval_SetAsyncGen##CVAR(NULL);                            \
     }
 
-    if (firstiter && firstiter != Py_None) {
-        if (!PyCallable_Check(firstiter)) {
-            PyErr_Format(PyExc_TypeError,
-                         "callable firstiter expected, got %.50s",
-                         Py_TYPE(firstiter)->tp_name);
-            return NULL;
-        }
-        _PyEval_SetAsyncGenFirstiter(firstiter);
-    }
-    else if (firstiter == Py_None) {
-        _PyEval_SetAsyncGenFirstiter(NULL);
-    }
+    _SET(finalizer, Finalizer)
+    _SET(firstiter, Firstiter)
+    _SET(yield_in, YieldIn)
+    _SET(yield_out, YieldOut)
+
+#undef _SET
 
     Py_RETURN_NONE;
 }
@@ -827,8 +829,11 @@ static PyObject *
 sys_get_asyncgen_hooks(PyObject *self, PyObject *args)
 {
     PyObject *res;
+
     PyObject *firstiter = _PyEval_GetAsyncGenFirstiter();
     PyObject *finalizer = _PyEval_GetAsyncGenFinalizer();
+    PyObject *yield_in = _PyEval_GetAsyncGenYieldIn();
+    PyObject *yield_out = _PyEval_GetAsyncGenYieldOut();
 
     res = PyStructSequence_New(&AsyncGenHooksType);
     if (res == NULL) {
@@ -843,11 +848,25 @@ sys_get_asyncgen_hooks(PyObject *self, PyObject *args)
         finalizer = Py_None;
     }
 
+    if (yield_in == NULL) {
+        yield_in = Py_None;
+    }
+
+    if (yield_out == NULL) {
+        yield_out = Py_None;
+    }
+
     Py_INCREF(firstiter);
     PyStructSequence_SET_ITEM(res, 0, firstiter);
 
     Py_INCREF(finalizer);
     PyStructSequence_SET_ITEM(res, 1, finalizer);
+
+    Py_INCREF(yield_in);
+    PyStructSequence_SET_ITEM(res, 2, yield_in);
+
+    Py_INCREF(yield_out);
+    PyStructSequence_SET_ITEM(res, 3, yield_out);
 
     return res;
 }

@@ -196,6 +196,8 @@ typedef struct _ts {
 
     PyObject *async_gen_firstiter;
     PyObject *async_gen_finalizer;
+    PyObject *async_gen_yield_in;
+    PyObject *async_gen_yield_out;
 
     /* XXX signal handlers should also be here */
 

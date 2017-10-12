@@ -107,7 +107,10 @@ gen_dealloc(PyGenObject *gen)
         /* We have to handle this case for asynchronous generators
            right here, because this code has to be between UNTRACK
            and GC_Del. */
-        Py_CLEAR(((PyAsyncGenObject*)gen)->ag_finalizer);
+        PyAsyncGenObject *agen = (PyAsyncGenObject*)gen;
+        Py_CLEAR(agen->ag_finalizer);
+        Py_CLEAR(agen->ag_yield_in);
+        Py_CLEAR(agen->ag_yield_out);
     }
     if (gen->gi_frame != NULL) {
         gen->gi_frame->f_gen = NULL;
@@ -1208,6 +1211,8 @@ static int
 async_gen_traverse(PyAsyncGenObject *gen, visitproc visit, void *arg)
 {
     Py_VISIT(gen->ag_finalizer);
+    Py_VISIT(gen->ag_yield_in);
+    Py_VISIT(gen->ag_yield_out);
     return gen_traverse((PyGenObject*)gen, visit, arg);
 }
 
@@ -1224,8 +1229,11 @@ static int
 async_gen_init_hooks(PyAsyncGenObject *o)
 {
     PyThreadState *tstate;
+
     PyObject *finalizer;
     PyObject *firstiter;
+    PyObject *yield_in;
+    PyObject *yield_out;
 
     if (o->ag_hooks_inited) {
         return 0;
@@ -1239,6 +1247,18 @@ async_gen_init_hooks(PyAsyncGenObject *o)
     if (finalizer) {
         Py_INCREF(finalizer);
         o->ag_finalizer = finalizer;
+    }
+
+    yield_in = tstate->async_gen_yield_in;
+    if (yield_in) {
+        Py_INCREF(yield_in);
+        o->ag_yield_in = yield_in;
+    }
+
+    yield_out = tstate->async_gen_yield_out;
+    if (yield_out) {
+        Py_INCREF(yield_out);
+        o->ag_yield_out = yield_out;
     }
 
     firstiter = tstate->async_gen_firstiter;
@@ -1255,6 +1275,55 @@ async_gen_init_hooks(PyAsyncGenObject *o)
     }
 
     return 0;
+}
+
+
+static inline int
+_async_gen_call_yield_cb(PyAsyncGenObject *o, PyObject *cb)
+{
+    PyObject *res;
+
+    Py_INCREF(cb);
+
+    if (PyErr_Occurred()) {
+        PyObject *exc, *val, *tb;
+        PyErr_Fetch(&exc, &val, &tb);
+        res = PyObject_CallFunctionObjArgs(cb, o, NULL);
+        PyErr_Restore(exc, val, tb);  // XXX
+    }
+    else {
+        res = PyObject_CallFunctionObjArgs(cb, o, NULL);
+    }
+
+    Py_DECREF(cb);
+
+    if (res == NULL) {
+        return 1;
+    }
+    Py_DECREF(res);
+    return 0;
+}
+
+
+static int
+async_gen_call_yield_in(PyAsyncGenObject *o)
+{
+    PyObject *yield_in = o->ag_yield_in;
+    if (yield_in == NULL) {
+        return 0;
+    }
+    return _async_gen_call_yield_cb(o, yield_in);
+}
+
+
+static int
+async_gen_call_yield_out(PyAsyncGenObject *o)
+{
+    PyObject *yield_out = o->ag_yield_out;
+    if (yield_out == NULL) {
+        return 0;
+    }
+    return _async_gen_call_yield_cb(o, yield_out);
 }
 
 
@@ -1402,6 +1471,8 @@ PyAsyncGen_New(PyFrameObject *f, PyObject *name, PyObject *qualname)
         return NULL;
     }
     o->ag_finalizer = NULL;
+    o->ag_yield_in = NULL;
+    o->ag_yield_out = NULL;
     o->ag_closed = 0;
     o->ag_hooks_inited = 0;
     return (PyObject*)o;
@@ -1449,6 +1520,10 @@ async_gen_unwrap_value(PyAsyncGenObject *gen, PyObject *result)
             || PyErr_ExceptionMatches(PyExc_GeneratorExit)
         ) {
             gen->ag_closed = 1;
+
+            if (async_gen_call_yield_out(gen)) {
+                return NULL;
+            }
         }
 
         return NULL;
@@ -1456,6 +1531,11 @@ async_gen_unwrap_value(PyAsyncGenObject *gen, PyObject *result)
 
     if (_PyAsyncGenWrappedValue_CheckExact(result)) {
         /* async yield */
+
+        if (async_gen_call_yield_out(gen)) {
+            return NULL;
+        }
+
         _PyGen_SetStopIterationValue(((_PyAsyncGenWrappedValue*)result)->agw_val);
         Py_DECREF(result);
         return NULL;
@@ -1502,6 +1582,9 @@ async_gen_asend_send(PyAsyncGenASend *o, PyObject *arg)
     }
 
     if (o->ags_state == AWAITABLE_STATE_INIT) {
+        if (async_gen_call_yield_in(o->ags_gen)) {
+            return NULL;
+        }
         if (arg == NULL || arg == Py_None) {
             arg = o->ags_sendval;
         }
@@ -1534,6 +1617,12 @@ async_gen_asend_throw(PyAsyncGenASend *o, PyObject *args)
     if (o->ags_state == AWAITABLE_STATE_CLOSED) {
         PyErr_SetNone(PyExc_StopIteration);
         return NULL;
+    }
+
+    if (o->ags_state == AWAITABLE_STATE_INIT) {
+        if (async_gen_call_yield_in(o->ags_gen)) {
+            return NULL;
+        }
     }
 
     result = gen_throw((PyGenObject*)o->ags_gen, args);
@@ -1781,6 +1870,10 @@ async_gen_athrow_send(PyAsyncGenAThrow *o, PyObject *arg)
             return NULL;
         }
 
+        if (async_gen_call_yield_in(o->agt_gen)) {
+            return NULL;
+        }
+
         o->agt_state = AWAITABLE_STATE_ITER;
 
         if (o->agt_args == NULL) {
@@ -1794,6 +1887,9 @@ async_gen_athrow_send(PyAsyncGenAThrow *o, PyObject *arg)
 
             if (retval && _PyAsyncGenWrappedValue_CheckExact(retval)) {
                 Py_DECREF(retval);
+                if (async_gen_call_yield_out(o->agt_gen)) {
+                    return NULL;
+                }
                 goto yield_close;
             }
         } else {
@@ -1828,6 +1924,9 @@ async_gen_athrow_send(PyAsyncGenAThrow *o, PyObject *arg)
         if (retval) {
             if (_PyAsyncGenWrappedValue_CheckExact(retval)) {
                 Py_DECREF(retval);
+                if (async_gen_call_yield_out(o->agt_gen)) {
+                    return NULL;
+                }
                 goto yield_close;
             }
             else {
@@ -1854,9 +1953,15 @@ check_error:
             PyErr_Clear();
             PyErr_SetNone(PyExc_StopIteration);
         }
+        if (async_gen_call_yield_out(o->agt_gen)) {
+            return NULL;
+        }
     }
     else if (PyErr_ExceptionMatches(PyExc_GeneratorExit)) {
         o->agt_state = AWAITABLE_STATE_CLOSED;
+        if (async_gen_call_yield_out(o->agt_gen)) {
+            return NULL;
+        }
         PyErr_Clear();          /* ignore these errors */
         PyErr_SetNone(PyExc_StopIteration);
     }
@@ -1886,6 +1991,9 @@ async_gen_athrow_throw(PyAsyncGenAThrow *o, PyObject *args)
         /* aclose() mode */
         if (retval && _PyAsyncGenWrappedValue_CheckExact(retval)) {
             Py_DECREF(retval);
+            if (async_gen_call_yield_out(o->agt_gen)) {
+                return NULL;
+            }
             PyErr_SetString(PyExc_RuntimeError, ASYNC_GEN_IGNORED_EXIT_MSG);
             return NULL;
         }

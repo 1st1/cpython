@@ -67,6 +67,8 @@ PyAPI_FUNC(PyObject *) PyCoro_New(struct _frame *,
 typedef struct {
     _PyGenObject_HEAD(ag)
     PyObject *ag_finalizer;
+    PyObject *ag_yield_in;
+    PyObject *ag_yield_out;
 
     /* Flag is set to 1 when hooks set up by sys.set_asyncgen_hooks
        were called on the generator, to avoid calling them more
