@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include "Python.h"
+#include "internal/pystate.h"
 
 
 /*
