@@ -289,6 +289,16 @@ Constants
 
    .. versionadded:: 3.2
 
+.. data:: SOCK_TYPE_MASK
+
+   On Linux, ``socket.type`` int field combines the type of the socket
+   (such as ``SOCK_STREAM``) and can have a few bit flags set
+   (such as ``SOCK_NONBLOCK`` and ``SOCK_CLOEXEC``.)
+
+   Availability: Linux >= 2.6.27.
+
+   .. versionadded:: 3.7
+
 .. data:: SO_*
           SOMAXCONN
           MSG_*
@@ -1491,6 +1501,12 @@ values given to the :class:`~socket.socket` constructor.
 .. attribute:: socket.type
 
    The socket type.
+
+   .. versionchanged:: 3.7
+      On Linux, socket.type does not have :const:`SOCK_NONBLOCK` and
+      :const:`SOCK_CLOEXEC` bit flags set anymore.  Therefore it is
+      safe to directly compare ``socket.type`` with constants like
+      :const:`SOCK_STREAM`.
 
 
 .. attribute:: socket.proto

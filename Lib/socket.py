@@ -93,6 +93,9 @@ IntFlag._convert(
 _LOCALHOST    = '127.0.0.1'
 _LOCALHOST_V6 = '::1'
 
+_SOCK_NONBLOCK = getattr(_socket, 'SOCK_NONBLOCK', 0)
+_SOCK_CLOEXEC = getattr(_socket, 'SOCK_CLOEXEC', 0)
+_SOCK_TYPE_MASK = getattr(_socket, 'SOCK_TYPE_MASK', 0)
 
 def _intenum_converter(value, enum_klass):
     """Convert a numeric family value to an IntEnum member.
@@ -156,6 +159,16 @@ class socket(_socket.socket):
         """Wrap __repr__() to reveal the real class name and socket
         address(es).
         """
+        if _SOCK_TYPE_MASK:
+            sock_type = self.type & _SOCK_TYPE_MASK
+            typestr = str(_intenum_converter(sock_type, SocketKind))
+            if self.type | _SOCK_NONBLOCK:
+                typestr = f'{typestr} | SOCK_NONBLOCK'
+            if self.type | _SOCK_CLOEXEC:
+                typestr = f'{typestr} | SOCK_CLOEXEC'
+        else:
+            typestr = str(self.type)
+
         closed = getattr(self, '_closed', False)
         s = "<%s.%s%s fd=%i, family=%s, type=%s, proto=%i" \
             % (self.__class__.__module__,
@@ -163,7 +176,7 @@ class socket(_socket.socket):
                " [closed]" if closed else "",
                self.fileno(),
                self.family,
-               self.type,
+               typestr,
                self.proto)
         if not closed:
             try:

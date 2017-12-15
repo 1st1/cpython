@@ -1,0 +1,3 @@
+Apply SOCK_TYPE_MASK to socket.type on Linux to make the attribute reliably
+return the actual type of the socket.  Expose socket.SOCK_TYPE_MASK constant
+when available.

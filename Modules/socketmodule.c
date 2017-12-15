@@ -865,6 +865,17 @@ sock_call(PySocketSockObject *s,
 }
 
 
+static int
+sock_filter_type(int type)
+{
+#if defined(__linux__) && defined(SOCK_TYPE_MASK)
+    return type & SOCK_TYPE_MASK;
+#else
+    return type;
+#endif
+}
+
+
 /* Initialize a new socket object. */
 
 /* Default timeout for new sockets */
@@ -872,12 +883,17 @@ static _PyTime_t defaulttimeout = _PYTIME_FROMSECONDS(-1);
 
 static int
 init_sockobject(PySocketSockObject *s,
-                SOCKET_T fd, int family, int type, int proto)
+                SOCKET_T fd, int family, int type, int truetype, int proto)
 {
     s->sock_fd = fd;
     s->sock_family = family;
     s->sock_type = type;
     s->sock_proto = proto;
+
+    if (truetype != -1) {
+        truetype = sock_filter_type(truetype);
+    }
+    s->sock_truetype = truetype;
 
     s->errorhandler = &set_error;
 #ifdef SOCK_NONBLOCK
@@ -910,7 +926,12 @@ new_sockobject(SOCKET_T fd, int family, int type, int proto)
         PyType_GenericNew(&sock_type, NULL, NULL);
     if (s == NULL)
         return NULL;
-    if (init_sockobject(s, fd, family, type, proto) == -1) {
+
+    /* new_sockobject() is called from socket_socketpair(), so we
+       trust that `type` is the true type for this socket. */
+    int truetype = type;
+
+    if (init_sockobject(s, fd, family, type, truetype, proto) == -1) {
         Py_DECREF(s);
         return NULL;
     }
@@ -2600,6 +2621,24 @@ sock_gettimeout(PySocketSockObject *s)
         double seconds = _PyTime_AsSecondsDouble(s->sock_timeout);
         return PyFloat_FromDouble(seconds);
     }
+}
+
+static PyObject *
+sock_gettruetype(PySocketSockObject *s)
+{
+    if (s->sock_truetype == -1) {
+        int res;
+        socklen_t length = sizeof(int);
+        int type;
+
+        res = getsockopt(s->sock_fd, SOL_SOCKET, SO_TYPE, &type, &length);
+        if (res < 0) {
+            return s->errorhandler();
+        }
+        s->sock_truetype = sock_filter_type(type);
+    }
+
+    return PyLong_FromLong(s->sock_truetype);
 }
 
 PyDoc_STRVAR(gettimeout_doc,
@@ -4627,6 +4666,7 @@ static PyMemberDef sock_memberlist[] = {
 
 static PyGetSetDef sock_getsetlist[] = {
     {"timeout", (getter)sock_gettimeout, NULL, PyDoc_STR("the socket timeout")},
+    {"truetype", (getter)sock_gettruetype, NULL, PyDoc_STR("true socket type")},
     {NULL} /* sentinel */
 };
 
@@ -4738,7 +4778,7 @@ sock_initobj(PyObject *self, PyObject *args, PyObject *kwds)
     PySocketSockObject *s = (PySocketSockObject *)self;
     PyObject *fdobj = NULL;
     SOCKET_T fd = INVALID_SOCKET;
-    int family = AF_INET, type = SOCK_STREAM, proto = 0;
+    int family = AF_INET, type = SOCK_STREAM, proto = 0, truetype = -1;
     static char *keywords[] = {"family", "type", "proto", "fileno", 0};
 #ifndef MS_WINDOWS
 #ifdef SOCK_CLOEXEC
@@ -4859,8 +4899,12 @@ sock_initobj(PyObject *self, PyObject *args, PyObject *kwds)
             return -1;
         }
 #endif
+
+        /* Since we know that we created the socket ouselves, we
+           are certain that the true type of the socket is `type`. */
+        truetype = type;
     }
-    if (init_sockobject(s, fd, family, type, proto) == -1) {
+    if (init_sockobject(s, fd, family, type, truetype, proto) == -1) {
         SOCKETCLOSE(fd);
         return -1;
     }
@@ -6907,6 +6951,12 @@ PyInit__socket(void)
 #endif
 #ifdef SOCK_NONBLOCK
     PyModule_AddIntMacro(m, SOCK_NONBLOCK);
+#endif
+#ifdef SOCK_TYPE_MASK
+    /* SOCK_TYPE_MASK is a linux-specific extension,
+       see linux/include/linux/net.h.
+       Availability: Linux >= 2.6.27. */
+    PyModule_AddIntMacro(m, SOCK_TYPE_MASK);
 #endif
 
 #ifdef  SO_DEBUG

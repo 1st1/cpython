@@ -216,6 +216,7 @@ typedef struct {
     SOCKET_T sock_fd;           /* Socket file descriptor */
     int sock_family;            /* Address family, e.g., AF_INET */
     int sock_type;              /* Socket type, e.g., SOCK_STREAM */
+    int sock_truetype;          /* Verified socket type. */
     int sock_proto;             /* Protocol type, usually 0 */
     PyObject *(*errorhandler)(void); /* Error handler; checks
                                         errno, returns NULL and
