@@ -451,6 +451,12 @@ class socket(_socket.socket):
         """
         return _intenum_converter(super().type, SocketKind)
 
+    @property
+    def truetype(self):
+        """Read-only access to the socket type.
+        """
+        return _intenum_converter(super().truetype, SocketKind)
+
     if os.name == 'nt':
         def get_inheritable(self):
             return os.get_handle_inheritable(self.fileno())
