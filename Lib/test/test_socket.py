@@ -1593,6 +1593,32 @@ class GeneralModuleTests(unittest.TestCase):
             self.assertEqual(s.family, 42424)
             self.assertEqual(s.type, 13331)
 
+    def test_socket_truetype(self):
+        SOCK_NONBLOCK = getattr(socket, 'SOCK_NONBLOCK', 0)
+
+        with socket.socket(socket.AF_INET,
+                           socket.SOCK_STREAM | SOCK_NONBLOCK) as s:
+
+            self.assertEqual(s.truetype, socket.SOCK_STREAM)
+            if SOCK_NONBLOCK:
+                # Linux
+                self.assertEqual(s.truetype, s.type & 0xF)
+            else:
+                self.assertEqual(s.truetype, s.type)
+
+            s2 = socket.socket(
+                socket.AF_INET, socket.SOCK_DGRAM, 0, s.fileno())
+            try:
+                if SOCK_NONBLOCK:
+                    # Linux
+                    self.assertEqual(s2.type & 0xF, socket.SOCK_DGRAM)
+                else:
+                    self.assertEqual(s2.type, socket.SOCK_DGRAM)
+
+                self.assertEqual(s.truetype, socket.SOCK_STREAM)
+            finally:
+                s2.detach()
+
     @unittest.skipUnless(hasattr(os, 'sendfile'), 'test needs os.sendfile()')
     def test__sendfile_use_sendfile(self):
         class File:

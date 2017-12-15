@@ -289,15 +289,6 @@ Constants
 
    .. versionadded:: 3.2
 
-.. data:: SOCK_TYPE_MASK
-
-   On Linux, ``socket.type`` int field combines the type of the socket
-   (such as ``SOCK_STREAM``) and can have a few bit flags set
-   (such as ``SOCK_NONBLOCK`` and ``SOCK_CLOEXEC``.)
-
-   Availability: Linux >= 2.6.27.
-
-   .. versionadded:: 3.7
 
 .. data:: SO_*
           SOMAXCONN
