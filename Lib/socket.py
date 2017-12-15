@@ -95,7 +95,6 @@ _LOCALHOST_V6 = '::1'
 
 _SOCK_NONBLOCK = getattr(_socket, 'SOCK_NONBLOCK', 0)
 _SOCK_CLOEXEC = getattr(_socket, 'SOCK_CLOEXEC', 0)
-_SOCK_TYPE_MASK = getattr(_socket, 'SOCK_TYPE_MASK', 0)
 
 def _intenum_converter(value, enum_klass):
     """Convert a numeric family value to an IntEnum member.
@@ -159,8 +158,8 @@ class socket(_socket.socket):
         """Wrap __repr__() to reveal the real class name and socket
         address(es).
         """
-        if _SOCK_TYPE_MASK:
-            sock_type = self.type & _SOCK_TYPE_MASK
+        if _SOCK_NONBLOCK and _SOCK_CLOEXEC:
+            sock_type = self.type & ~(_SOCK_NONBLOCK | _SOCK_CLOEXEC)
             typestr = str(_intenum_converter(sock_type, SocketKind))
             if self.type | _SOCK_NONBLOCK:
                 typestr = f'{typestr} | SOCK_NONBLOCK'

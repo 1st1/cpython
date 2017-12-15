@@ -868,8 +868,9 @@ sock_call(PySocketSockObject *s,
 static int
 sock_filter_type(int type)
 {
-#if defined(__linux__) && defined(SOCK_TYPE_MASK)
-    return type & SOCK_TYPE_MASK;
+#if defined(__linux__)
+    // https://github.com/torvalds/linux/blob/v4.14/include/linux/net.h#L76
+    return type & 0xF;
 #else
     return type;
 #endif
@@ -6951,12 +6952,6 @@ PyInit__socket(void)
 #endif
 #ifdef SOCK_NONBLOCK
     PyModule_AddIntMacro(m, SOCK_NONBLOCK);
-#endif
-#ifdef SOCK_TYPE_MASK
-    /* SOCK_TYPE_MASK is a linux-specific extension,
-       see linux/include/linux/net.h.
-       Availability: Linux >= 2.6.27. */
-    PyModule_AddIntMacro(m, SOCK_TYPE_MASK);
 #endif
 
 #ifdef  SO_DEBUG
