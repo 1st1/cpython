@@ -1601,7 +1601,7 @@ class GeneralModuleTests(unittest.TestCase):
 
             self.assertEqual(s.truetype, socket.SOCK_STREAM)
             if SOCK_NONBLOCK:
-                # Linux
+                self.assertEqual(s.type, socket.SOCK_STREAM | SOCK_NONBLOCK)
                 self.assertEqual(s.truetype, s.type & 0xF)
             else:
                 self.assertEqual(s.truetype, s.type)
