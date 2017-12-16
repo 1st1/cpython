@@ -1619,6 +1619,14 @@ class GeneralModuleTests(unittest.TestCase):
             finally:
                 s2.detach()
 
+    def test_socket_invalid_truetype(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0, 1)
+        try:
+            with self.assertRaises(OSError):
+                s.truetype
+        finally:
+            s.detach()
+
     @unittest.skipUnless(hasattr(os, 'sendfile'), 'test needs os.sendfile()')
     def test__sendfile_use_sendfile(self):
         class File:
@@ -5213,6 +5221,19 @@ class NonblockConstantTest(unittest.TestCase):
         with socket.socket() as s:
             self.checkNonblock(s, False)
         socket.setdefaulttimeout(t)
+
+    def test_socket_repr(self):
+        sock_type = (socket.SOCK_STREAM |
+                     socket.SOCK_NONBLOCK |
+                     socket.SOCK_CLOEXEC)
+
+        with socket.socket(socket.AF_INET, sock_type) as s:
+            sr = repr(s)
+            if s & socket.SOCK_NONBLOCK:
+                self.assertIn('| SOCK_NONBLOCK', sr)
+            if s & socket.SOCK_CLOEXEC:
+                self.assertIn('| SOCK_CLOEXEC', sr)
+            self.assertIn('SOCK_STREAM', sr)
 
 
 @unittest.skipUnless(os.name == "nt", "Windows specific")
