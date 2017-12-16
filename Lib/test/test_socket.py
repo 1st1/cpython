@@ -5229,9 +5229,9 @@ class NonblockConstantTest(unittest.TestCase):
 
         with socket.socket(socket.AF_INET, sock_type) as s:
             sr = repr(s)
-            if s & socket.SOCK_NONBLOCK:
+            if s.type & socket.SOCK_NONBLOCK:
                 self.assertIn('| SOCK_NONBLOCK', sr)
-            if s & socket.SOCK_CLOEXEC:
+            if s.type & socket.SOCK_CLOEXEC:
                 self.assertIn('| SOCK_CLOEXEC', sr)
             self.assertIn('SOCK_STREAM', sr)
 
