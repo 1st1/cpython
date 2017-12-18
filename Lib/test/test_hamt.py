@@ -74,6 +74,12 @@ class HamtTest(unittest.TestCase):
         o = object()
         h.set('1', o).set('1', o)
 
+    def test_hamt_basics_4(self):
+        h = hamt()
+        h1 = h.set('1', int('1000'))
+        h2 = h1.set('1', int('1000'))
+        self.assertIs(h1, h2)
+
     def test_hamt_collision_1(self):
         k1 = HashKey(10, 'aaa')
         k2 = HashKey(10, 'bbb')
