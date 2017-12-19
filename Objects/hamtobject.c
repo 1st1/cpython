@@ -288,29 +288,6 @@ hamt_node_bitmap_clone(PyHamtNode_Bitmap *o)
 }
 
 
-static PyHamtNode_Bitmap *
-hamt_node_bitmap_clone_and_set(PyHamtNode_Bitmap *o,
-                               uint32_t idx, PyObject *val)
-{
-    /* Clone 'o' bitmap, and set child node at the index 'idx' to 'val';
-       'val' can be NULL.
-    */
-
-    PyHamtNode_Bitmap *new_node;
-
-    new_node = hamt_node_bitmap_clone(o);
-    if (new_node == NULL) {
-        return NULL;
-    }
-
-    Py_DECREF(new_node->b_array[idx]);
-    Py_XINCREF(val);
-    new_node->b_array[idx] = val;
-    return new_node;
-
-}
-
-
 static _PyHamtNode_BaseNode *
 hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
                        uint32_t shift, int32_t hash,
@@ -359,24 +336,25 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
 
             assert(val_or_node != NULL);
 
-            _PyHamtNode_BaseNode *n = hamt_node_assoc(
+            _PyHamtNode_BaseNode *sub_node = hamt_node_assoc(
                 (_PyHamtNode_BaseNode *)val_or_node,
                 shift + 5, hash, key, val, added_leaf);
-            if (n == NULL) {
+            if (sub_node == NULL) {
                 return NULL;
             }
 
-            if (val_or_node == (PyObject *)n) {
-                Py_DECREF(n);
+            if (val_or_node == (PyObject *)sub_node) {
+                Py_DECREF(sub_node);
                 Py_INCREF(self);
                 return (_PyHamtNode_BaseNode *)self;
             }
 
-            _PyHamtNode_BaseNode *ret =
-                (_PyHamtNode_BaseNode *) hamt_node_bitmap_clone_and_set(
-                    self, val_idx, (PyObject *)n);
-            Py_DECREF(n);
-            return ret;
+            PyHamtNode_Bitmap *ret = hamt_node_bitmap_clone(self);
+            if (ret == NULL) {
+                return NULL;
+            }
+            Py_SETREF(ret->b_array[val_idx], (PyObject*)sub_node);
+            return (_PyHamtNode_BaseNode *)ret;
         }
 
         assert(key != NULL);
@@ -401,40 +379,43 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
 
             /* We're setting a new value for the key we had before.
                Make a new bitmap node with a replaced value, and return it. */
-            return (_PyHamtNode_BaseNode *)hamt_node_bitmap_clone_and_set(
-                self, val_idx, val);
+            PyHamtNode_Bitmap *ret = hamt_node_bitmap_clone(self);
+            if (ret == NULL) {
+                return NULL;
+            }
+            Py_INCREF(val);
+            Py_SETREF(ret->b_array[val_idx], val);
+            return (_PyHamtNode_BaseNode *)ret;
         }
 
         /* It's a new key, and it has the same index as *one* another key.
-           We have a collision.  We need to create a new bitmap node
-           which will combine the existing key and the key we're adding.
+           We have a collision.  We need to create a new node which will
+           combine the existing key and the key we're adding.
 
            `hamt_node_create_twokeys_node` will either create a new
            Collision node if the keys have identical hashes, or
            a new Bitmap node.
         */
-        _PyHamtNode_BaseNode *n = hamt_node_create_twokeys_node(
+        _PyHamtNode_BaseNode *sub_node = hamt_node_create_twokeys_node(
             shift + 5,
             key_or_null, val_or_node,  /* existing key/val */
             hash,
             key, val  /* new key/val */
         );
-        if (n == NULL) {
+        if (sub_node == NULL) {
             return NULL;
         }
 
-        PyHamtNode_Bitmap *n2 = hamt_node_bitmap_clone_and_set(
-            self, key_idx, NULL);
-        if (n2 == NULL) {
-            Py_DECREF(n);
+        PyHamtNode_Bitmap *ret = hamt_node_bitmap_clone(self);
+        if (ret == NULL) {
+            Py_DECREF(sub_node);
             return NULL;
         }
+        Py_SETREF(ret->b_array[key_idx], NULL);
+        Py_SETREF(ret->b_array[val_idx], (PyObject *)sub_node);
 
-        Py_XDECREF(n2->b_array[val_idx]);
-        assert(n2->b_array[key_idx] == NULL);
-        n2->b_array[val_idx] = (PyObject *)n;
         *added_leaf = true;
-        return (_PyHamtNode_BaseNode *)n2;
+        return (_PyHamtNode_BaseNode *)ret;
     }
     else {
         /* There was no key before with the same (shift,hash). */
