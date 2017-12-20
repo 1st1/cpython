@@ -1,3 +1,4 @@
+import random
 import unittest
 
 
@@ -129,12 +130,42 @@ class HamtTest(unittest.TestCase):
             h = hamt()
             d = dict()
             N = 10000
-            for i in range(N):
-                h = h.set(str(i), i)
-                d[str(i)] = i
+            for key in range(N):
+                h = h.set(str(key), key)
+                d[str(key)] = key
             self.assertEqual(len(h), N)
-            for i in range(N):
-                self.assertEqual(h.get(str(i), 'not found'), i)
+
+            for key in range(N):
+                self.assertEqual(h.get(str(key), 'not found'), key)
+
+            keys_to_delete = list(range(N))
+            random.shuffle(keys_to_delete)
+            for i, key in enumerate(keys_to_delete):
+                h = h.delete(str(key))
+                self.assertEqual(h.get(str(key), 'not found'), 'not found')
+                del d[str(key)]
+
+                if i == N // 2:
+                    hm = h
+                    dm = d.copy()
+
+            self.assertEqual(len(d), 0)
+            self.assertEqual(len(h), 0)
+
+            # ============
+
+            for key in dm:
+                self.assertEqual(hm.get(str(key)), dm[key])
+            self.assertEqual(len(dm), len(hm))
+
+            for key in keys_to_delete:
+                hm = hm.delete(str(key))
+                self.assertEqual(hm.get(str(key), 'not found'), 'not found')
+                dm.pop(str(key), None)
+
+            self.assertEqual(len(d), 0)
+            self.assertEqual(len(h), 0)
+
 
     def test_hamt_delete_1(self):
         A = HashKey(100, 'A')
@@ -309,6 +340,55 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(len(h), orig_len - 4)
 
         h = h.delete(B)
+        self.assertEqual(len(h), 0)
+
+    def test_hamt_delete_5(self):
+        h = hamt()
+
+        keys = []
+        for i in range(17):
+            key = HashKey(i, str(i))
+            keys.append(key)
+            h = h.set(key, f'val-{i}')
+
+        collision_key16 = HashKey(16, '18')
+        h = h.set(collision_key16, 'collision')
+
+        # ArrayNode(id=0x10f8b9318):
+        #     0::
+        #     BitmapNode(size=2 count=1 bitmap=0b1 id=0x10f878ee0):
+        #         <Key name:0 hash:0>: 'val-0'
+        #
+        # ... 14 more BitmapNodes ...
+
+        #     15::
+        #     BitmapNode(size=2 count=1 bitmap=0b1 id=0x10f878238):
+        #         <Key name:15 hash:15>: 'val-15'
+        #
+        #     16::
+        #     BitmapNode(size=2 count=1 bitmap=0b1 id=0x10f878670):
+        #         NULL:
+        #             CollisionNode(size=4 id=0x10f2f5af8):
+        #                 <Key name:16 hash:16>: 'val-16'
+        #                 <Key name:18 hash:16>: 'collision'
+
+        self.assertEqual(len(h), 18)
+
+        h = h.delete(keys[2])
+        self.assertEqual(len(h), 17)
+
+        h = h.delete(collision_key16)
+        self.assertEqual(len(h), 16)
+        h = h.delete(keys[16])
+        self.assertEqual(len(h), 15)
+
+        h = h.delete(keys[1])
+        self.assertEqual(len(h), 14)
+        h = h.delete(keys[1])
+        self.assertEqual(len(h), 14)
+
+        for key in keys:
+            h = h.delete(key)
         self.assertEqual(len(h), 0)
 
 
