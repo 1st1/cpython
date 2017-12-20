@@ -47,11 +47,9 @@ static int numfree_array;
 static PyHamtNode_Bitmap *_empty_bitmap_node;
 
 
-static PyHamtObject *
-_hamt_new(void);
+static PyHamtObject * _hamt_new(void);
 
-static _PyHamtNode_BaseNode *
-hamt_node_array_new(void);
+static _PyHamtNode_BaseNode * hamt_node_array_new(Py_ssize_t);
 
 static _PyHamtNode_BaseNode *
 hamt_node_assoc(_PyHamtNode_BaseNode *node,
@@ -74,6 +72,25 @@ static int
 hamt_node_dump(_PyHamtNode_BaseNode *node,
                _PyUnicodeWriter *writer, int level);
 #endif
+
+
+#ifdef Py_DEBUG
+#define VALIDATE_ARRAY_NODE(NODE)                               \
+    do {                                                        \
+        assert(IS_ARRAY_NODE(NODE));                            \
+        PyHamtNode_Array *node = (PyHamtNode_Array*)(NODE);     \
+        Py_ssize_t i = 0, count = 0;                            \
+        for (; i < _PyHamtNode_Array_size; i++) {               \
+            if (node->a_array[i] != NULL) {                     \
+                count++;                                        \
+            }                                                   \
+        }                                                       \
+        assert(count == node->a_count);                         \
+    } while (0);
+#else
+#define VALIDATE_ARRAY_NODE(node)
+#endif
+
 
 
 /* Returns -1 on error */
@@ -451,7 +468,7 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
             _PyHamtNode_BaseNode *res = NULL;
 
             /* Create a new Array node. */
-            new_node = (PyHamtNode_Array *)hamt_node_array_new();
+            new_node = (PyHamtNode_Array *)hamt_node_array_new(n + 1);
             if (new_node == NULL) {
                 goto fin;
             }
@@ -474,9 +491,13 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
             /* Copy existing key/value pairs from the current Bitmap
                node to the new Array node we've just created. */
             Py_ssize_t i, j;
-            j = 0;
-            for (i = 0; i < _PyHamtNode_Array_size; i++) {
+            for (i = 0, j = 0; i < _PyHamtNode_Array_size; i++) {
                 if (((self->b_bitmap >> i) & 1) != 0) {
+                    /* Ensure we don't accidentally override `jdx` element
+                       we set few lines above.
+                    */
+                    assert(new_node->a_array[i] == NULL);
+
                     if (self->b_array[j] == NULL) {
                         new_node->a_array[i] =
                             (_PyHamtNode_BaseNode *)self->b_array[j + 1];
@@ -497,6 +518,8 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
                     j += 2;
                 }
             }
+
+            VALIDATE_ARRAY_NODE(new_node)
 
             /* That's it! */
             res = (_PyHamtNode_BaseNode *)new_node;
@@ -1019,7 +1042,7 @@ error:
 
 
 static _PyHamtNode_BaseNode *
-hamt_node_array_new(void)
+hamt_node_array_new(Py_ssize_t count)
 {
     /* Create a new Array node. */
 
@@ -1046,6 +1069,8 @@ hamt_node_array_new(void)
     for (i = 0; i < _PyHamtNode_Array_size; i++) {
         node->a_array[i] = NULL;
     }
+
+    node->a_count = count;
 
     _PyObject_GC_TRACK(node);
     return (_PyHamtNode_BaseNode *)node;
@@ -1093,7 +1118,7 @@ hamt_node_array_assoc(PyHamtNode_Array *self,
         }
 
         /* Create a new Array node. */
-        new_node = (PyHamtNode_Array *)hamt_node_array_new();
+        new_node = (PyHamtNode_Array *)hamt_node_array_new(self->a_count + 1);
         if (new_node == NULL) {
             Py_DECREF(child_node);
             return NULL;
@@ -1108,6 +1133,7 @@ hamt_node_array_assoc(PyHamtNode_Array *self,
 
         assert(new_node->a_array[idx] == NULL);
         new_node->a_array[idx] = child_node;  /* borrow */
+        VALIDATE_ARRAY_NODE(new_node)
     }
     else {
         /* There's a child node for the given hash.
@@ -1120,7 +1146,7 @@ hamt_node_array_assoc(PyHamtNode_Array *self,
         }
 
         /* Create a new Array node. */
-        new_node = (PyHamtNode_Array *)hamt_node_array_new();
+        new_node = (PyHamtNode_Array *)hamt_node_array_new(self->a_count);
         if (new_node == NULL) {
             Py_DECREF(child_node);
             return NULL;
@@ -1136,6 +1162,7 @@ hamt_node_array_assoc(PyHamtNode_Array *self,
 
         Py_DECREF(new_node->a_array[idx]);
         new_node->a_array[idx] = child_node;  /* borrow */
+        VALIDATE_ARRAY_NODE(new_node)
     }
 
     return (_PyHamtNode_BaseNode *)new_node;
