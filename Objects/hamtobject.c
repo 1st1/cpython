@@ -119,7 +119,11 @@ hamt_hash(PyObject *o)
        32 bits via xor, it seems that the resulting hash function
        is good enough.  This is also how Java hashes its Long type.
        Storing 10, 100, 1000 Python strings results in a relatively
-       shallow uniform trie. */
+       shallow and uniform tree structure.
+
+       Please don't change this hashing algorithm, as there are many
+       tests that test some exact tree shape to cover all code paths.
+    */
     int32_t xored = (int32_t)(hash & 0xffffffffl) ^ (int32_t)(hash >> 32);
     return xored == -1 ? -2 : xored;
 #endif
@@ -1088,6 +1092,59 @@ hamt_node_collision_assoc(PyHamtNode_Collision *self,
 }
 
 
+static hamt_without_t
+hamt_node_collision_without(PyHamtNode_Collision *self,
+                            uint32_t shift, int32_t hash,
+                            PyObject *key,
+                            _PyHamtNode_BaseNode **new_node)
+{
+    if (hash != self->c_hash) {
+        return W_NOT_FOUND;
+    }
+
+    Py_ssize_t key_idx = -1;
+    hamt_find_t found = hamt_node_collision_find_index(self, key, &key_idx);
+
+    switch (found) {
+        case F_ERROR:
+            return W_ERROR;
+
+        case F_NOT_FOUND:
+            return W_NOT_FOUND;
+
+        case F_FOUND:
+            assert(key_idx >= 0);
+            assert(key_idx < Py_SIZE(self));
+
+            if (Py_SIZE(self) == 1) {
+                /* The node has only one key and it's the key we're trying
+                   to delete. */
+                return W_EMPTY;
+            }
+
+            /* Allocate a new Collision node with capacity for one
+               less key/value pair */
+            PyHamtNode_Collision *new = (PyHamtNode_Collision *)
+                hamt_node_collision_new(
+                    self->c_hash, Py_SIZE(self) - 2);
+
+            /* Copy all other keys from `self` to `new` */
+            Py_ssize_t i;
+            for (i = 0; i < key_idx; i++) {
+                Py_INCREF(self->c_array[i]);
+                new->c_array[i] = self->c_array[i];
+            }
+            for (i = key_idx + 2; i < Py_SIZE(self); i++) {
+                Py_INCREF(self->c_array[i]);
+                new->c_array[i - 2] = self->c_array[i];
+            }
+
+            *new_node = (_PyHamtNode_BaseNode*)new;
+            return W_NONEMPTY;
+    }
+}
+
+
 static hamt_find_t
 hamt_node_collision_find(PyHamtNode_Collision *self,
                          uint32_t shift, int32_t hash,
@@ -1531,7 +1588,10 @@ hamt_node_without(_PyHamtNode_BaseNode *node,
             new_node);
     }
     else if (IS_COLLISION_NODE(node)) {
-        assert(0);
+        return hamt_node_collision_without(
+            (PyHamtNode_Collision *)node,
+            shift, hash, key,
+            new_node);
     }
 
     assert(0);

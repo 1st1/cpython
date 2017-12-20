@@ -269,6 +269,48 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(h.get(C), 'c')
         self.assertEqual(h.get(B), 'b')
 
+    def test_hamt_delete_4(self):
+        A = HashKey(100, 'A')
+        B = HashKey(101, 'B')
+        C = HashKey(100100, 'C')
+        D = HashKey(100100, 'D')
+        E = HashKey(100100, 'E')
+
+        h = hamt()
+        h = h.set(A, 'a')
+        h = h.set(B, 'b')
+        h = h.set(C, 'c')
+        h = h.set(D, 'd')
+        h = h.set(E, 'e')
+
+        orig_len = len(h)
+
+        # BitmapNode(size=4 bitmap=0b110000 id=0x105158168):
+        #     NULL:
+        #         BitmapNode(size=4 bitmap=0b1000000000000000000001000 id=0x1051580e0):
+        #             <Key name:A hash:100>: 'a'
+        #             NULL:
+        #                 CollisionNode(size=6 id=0x10515ef30):
+        #                     <Key name:C hash:100100>: 'c'
+        #                     <Key name:D hash:100100>: 'd'
+        #                     <Key name:E hash:100100>: 'e'
+        #     <Key name:B hash:101>: 'b'
+
+        h = h.delete(D)
+        self.assertEqual(len(h), orig_len - 1)
+
+        h = h.delete(E)
+        self.assertEqual(len(h), orig_len - 2)
+
+        h = h.delete(C)
+        self.assertEqual(len(h), orig_len - 3)
+
+        h = h.delete(A)
+        self.assertEqual(len(h), orig_len - 4)
+
+        h = h.delete(B)
+        self.assertEqual(len(h), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
