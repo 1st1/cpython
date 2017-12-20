@@ -16,6 +16,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     _PyHamtNode_BaseNode *a_array[_PyHamtNode_Array_size];
+    Py_ssize_t a_count;
 } PyHamtNode_Array;
 
 
