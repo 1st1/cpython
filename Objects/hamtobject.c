@@ -658,7 +658,7 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
                 }
 
                 *new_node = (_PyHamtNode_BaseNode *)
-                    hamt_node_bitmap_clone_without(self, bit);
+                    hamt_node_bitmap_clone_without(self, bit);  /* borrow */
                 if (*new_node == NULL) {
                     return W_ERROR;
                 }
@@ -676,13 +676,14 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
 
                         PyHamtNode_Bitmap *clone = hamt_node_bitmap_clone(self);
                         if (clone == NULL) {
+                            Py_DECREF(sub_node);
                             return W_ERROR;
                         }
 
-                        Py_INCREF(key);
-                        clone->b_array[key_idx] = key;
+                        Py_XINCREF(key);
+                        Py_XSETREF(clone->b_array[key_idx], key);
                         Py_INCREF(val);
-                        clone->b_array[val_idx] = val;
+                        Py_SETREF(clone->b_array[val_idx], val);
 
                         Py_DECREF(sub_node);
 
@@ -1448,7 +1449,7 @@ hamt_node_count(_PyHamtNode_BaseNode *node)
         return Py_SIZE(node) >> 1;
     }
 
-    assert(0);
+    return -1;
 }
 
 
@@ -1459,7 +1460,6 @@ hamt_node_extract_keyval(_PyHamtNode_BaseNode *node,
     assert(!IS_ARRAY_NODE(node));
 
 #ifdef Py_DEBUG
-    *key = NULL;
     *val = NULL;
 #endif
 
@@ -1474,7 +1474,7 @@ hamt_node_extract_keyval(_PyHamtNode_BaseNode *node,
         *val = ((PyHamtNode_Collision *)node)->c_array[0];
     }
 
-    assert(*key != NULL);
+    /* key can be NULL in Bitmap nodes */
     assert(*val != NULL);
 }
 
