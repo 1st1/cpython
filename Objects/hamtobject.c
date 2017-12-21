@@ -1,5 +1,3 @@
-#include <stdbool.h>
-
 #include "Python.h"
 #include "internal/pystate.h"
 
@@ -51,7 +49,7 @@ static _PyHamtNode_BaseNode * hamt_node_array_new(Py_ssize_t);
 static _PyHamtNode_BaseNode *
 hamt_node_assoc(_PyHamtNode_BaseNode *node,
                 uint32_t shift, int32_t hash,
-                PyObject *key, PyObject *val, bool* added_leaf);
+                PyObject *key, PyObject *val, int* added_leaf);
 
 static hamt_without_t
 hamt_node_without(_PyHamtNode_BaseNode *node,
@@ -358,7 +356,7 @@ hamt_node_bitmap_clone_without(PyHamtNode_Bitmap *o, uint32_t bit)
 static _PyHamtNode_BaseNode *
 hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
                        uint32_t shift, int32_t hash,
-                       PyObject *key, PyObject *val, bool* added_leaf);
+                       PyObject *key, PyObject *val, int* added_leaf);
 
 static _PyHamtNode_BaseNode *
 hamt_node_new_bitmap_or_collision(uint32_t shift,
@@ -399,7 +397,7 @@ hamt_node_new_bitmap_or_collision(uint32_t shift,
         return (_PyHamtNode_BaseNode *)n;
     }
     else {
-        bool added_leaf = 0;
+        int added_leaf = 0;
         _PyHamtNode_BaseNode *n = hamt_node_bitmap_new(0);
         if (n == NULL) {
             return NULL;
@@ -426,7 +424,7 @@ hamt_node_new_bitmap_or_collision(uint32_t shift,
 static _PyHamtNode_BaseNode *
 hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
                        uint32_t shift, int32_t hash,
-                       PyObject *key, PyObject *val, bool* added_leaf)
+                       PyObject *key, PyObject *val, int* added_leaf)
 {
     /* assoc operation for bitmap nodes.
 
@@ -549,7 +547,7 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
         Py_SETREF(ret->b_array[key_idx], NULL);
         Py_SETREF(ret->b_array[val_idx], (PyObject *)sub_node);
 
-        *added_leaf = true;
+        *added_leaf = 1;
         return (_PyHamtNode_BaseNode *)ret;
     }
     else {
@@ -654,7 +652,7 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
             uint32_t val_idx = key_idx + 1;
             Py_ssize_t i;
 
-            *added_leaf = true;
+            *added_leaf = 1;
 
             /* Allocate new Bitmap node which can have one more key/val
                pair in addition to what we have already. */
@@ -1073,7 +1071,7 @@ hamt_node_collision_find_index(PyHamtNode_Collision *self, PyObject *key,
 static _PyHamtNode_BaseNode *
 hamt_node_collision_assoc(PyHamtNode_Collision *self,
                           uint32_t shift, int32_t hash,
-                          PyObject *key, PyObject *val, bool* added_leaf)
+                          PyObject *key, PyObject *val, int* added_leaf)
 {
     /* Set a new key to this level (currently a Collision node)
        of the tree. */
@@ -1114,7 +1112,7 @@ hamt_node_collision_assoc(PyHamtNode_Collision *self,
                 Py_INCREF(val);
                 new_node->c_array[i + 1] = val;
 
-                *added_leaf = true;
+                *added_leaf = 1;
                 return (_PyHamtNode_BaseNode *)new_node;
 
             case F_FOUND:
@@ -1454,7 +1452,7 @@ hamt_node_array_clone(PyHamtNode_Array *node)
 static _PyHamtNode_BaseNode *
 hamt_node_array_assoc(PyHamtNode_Array *self,
                       uint32_t shift, int32_t hash,
-                      PyObject *key, PyObject *val, bool* added_leaf)
+                      PyObject *key, PyObject *val, int* added_leaf)
 {
     /* Set a new key to this level (currently a Collision node)
        of the tree.
@@ -1807,7 +1805,7 @@ error:
 static _PyHamtNode_BaseNode *
 hamt_node_assoc(_PyHamtNode_BaseNode *node,
                 uint32_t shift, int32_t hash,
-                PyObject *key, PyObject *val, bool* added_leaf)
+                PyObject *key, PyObject *val, int* added_leaf)
 {
     /* Set key/value to the 'node' starting with the given shift/hash.
        Return a new node, or the same node if key/value already
@@ -2162,7 +2160,7 @@ static PyHamtObject *
 hamt_assoc(PyHamtObject *o, PyObject *key, PyObject *val)
 {
     int32_t key_hash;
-    bool added_leaf = false;
+    int added_leaf = 0;
     _PyHamtNode_BaseNode *new_root;
     PyHamtObject *new_o;
 
