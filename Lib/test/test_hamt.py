@@ -524,6 +524,25 @@ class HamtTest(unittest.TestCase):
             set(list(it)),
             {(A, 'a'), (B, 'b'), (C, 'c'), (D, 'd'), (E, 'e'), (F, 'f')})
 
+    def test_hamt_keys_1(self):
+        A = HashKey(100, 'A')
+        B = HashKey(101, 'B')
+        C = HashKey(100100, 'C')
+        D = HashKey(100100, 'D')
+        E = HashKey(100100, 'E')
+        F = HashKey(110, 'F')
+
+        h = hamt()
+        h = h.set(A, 'a')
+        h = h.set(B, 'b')
+        h = h.set(C, 'c')
+        h = h.set(D, 'd')
+        h = h.set(E, 'e')
+        h = h.set(F, 'f')
+
+        self.assertEqual(set(list(h.keys())), {A, B, C, D, E, F})
+        self.assertEqual(set(list(h)), {A, B, C, D, E, F})
+
     def test_hamt_items_3(self):
         h = hamt()
         self.assertEqual(len(h.items()), 0)
@@ -653,6 +672,29 @@ class HamtTest(unittest.TestCase):
         with self.assertRaises(HashingError):
             with HaskKeyCrasher(error_on_hash=True):
                 AA in h
+
+    def test_hamt_getitem_1(self):
+        A = HashKey(100, 'A')
+        AA = HashKey(100, 'A')
+
+        B = HashKey(101, 'B')
+
+        h = hamt()
+        h = h.set(A, 1)
+
+        self.assertEqual(h[A], 1)
+        self.assertEqual(h[AA], 1)
+
+        with self.assertRaises(KeyError):
+            h[B]
+
+        with self.assertRaises(EqError):
+            with HaskKeyCrasher(error_on_eq=True):
+                h[AA]
+
+        with self.assertRaises(HashingError):
+            with HaskKeyCrasher(error_on_hash=True):
+                h[AA]
 
 
 if __name__ == "__main__":

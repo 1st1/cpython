@@ -2174,7 +2174,7 @@ hamt_iter_yield_items(PyObject *key, PyObject *val)
 static PyObject *
 hamt_iter_new_items(PyHamtObject *o)
 {
-    return PyHamtIterator_new(&PyHamtItems_Type, &hamt_iter_yield_items, o);
+    return PyHamtIterator_new(&PyHamtItems_Type, hamt_iter_yield_items, o);
 }
 
 
@@ -2197,7 +2197,7 @@ hamt_iter_yield_keys(PyObject *key, PyObject *val)
 static PyObject *
 hamt_iter_new_keys(PyHamtObject *o)
 {
-    return PyHamtIterator_new(&PyHamtKeys_Type, &hamt_iter_yield_keys, o);
+    return PyHamtIterator_new(&PyHamtKeys_Type, hamt_iter_yield_keys, o);
 }
 
 
@@ -2220,7 +2220,7 @@ hamt_iter_yield_values(PyObject *key, PyObject *val)
 static PyObject *
 hamt_iter_new_values(PyHamtObject *o)
 {
-    return PyHamtIterator_new(&PyHamtValues_Type, &hamt_iter_yield_values, o);
+    return PyHamtIterator_new(&PyHamtValues_Type, hamt_iter_yield_values, o);
 }
 
 
@@ -2533,6 +2533,29 @@ hamt_py_contains(PyHamtObject *self, PyObject *key)
 }
 
 static PyObject *
+hamt_py_subscript(PyHamtObject *self, PyObject *key)
+{
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            PyErr_SetObject(PyExc_KeyError, key);
+            return NULL;
+    }
+}
+
+static PyObject *
+hamt_py_iter(PyHamtObject *self)
+{
+    return hamt_iter_new_keys(self);
+}
+
+static PyObject *
 hamt_py_delete(PyHamtObject *self, PyObject *key)
 {
     return (PyObject *)hamt_without(self, key);
@@ -2597,7 +2620,8 @@ static PySequenceMethods PyHamt_as_sequence = {
 };
 
 static PyMappingMethods PyHamt_as_mapping = {
-    (lenfunc)hamt_py_len,
+    (lenfunc)hamt_py_len,           /* mp_length */
+    (binaryfunc)hamt_py_subscript,  /* mp_subscript */
 };
 
 
@@ -2611,6 +2635,7 @@ PyTypeObject PyHamt_Type = {
     .tp_methods = PyHamt_methods,
     .tp_as_mapping = &PyHamt_as_mapping,
     .tp_as_sequence = &PyHamt_as_sequence,
+    .tp_iter = (getiterfunc)hamt_py_iter,
     .tp_dealloc = (destructor)hamt_dealloc,
     .tp_getattro = PyObject_GenericGetAttr,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
