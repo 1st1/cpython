@@ -169,7 +169,7 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(len(h4), 2)
         self.assertEqual(len(h5), 3)
 
-    def test_hamt_stress_1(self):
+    def test_hamt_stress(self):
         COLLECTION_SIZE = 10000
         TEST_ITERS_EVERY = 997
         CRASH_HASH_EVERY = 97
@@ -322,12 +322,12 @@ class HamtTest(unittest.TestCase):
 
         orig_len = len(h)
 
-        # BitmapNode(size=8 bitmap=0b1110010000 id=0x10b7ddc28):
+        # BitmapNode(size=8 bitmap=0b1110010000):
         #     <Key name:A hash:100>: 'a'
         #     <Key name:D hash:103>: 'd'
         #     <Key name:E hash:104>: 'e'
         #     NULL:
-        #         BitmapNode(size=4 bitmap=0b100000000001000000000 id=0x10b836168):
+        #         BitmapNode(size=4 bitmap=0b100000000001000000000):
         #             <Key name:B hash:201001>: 'b'
         #             <Key name:C hash:101001>: 'c'
 
@@ -340,11 +340,11 @@ class HamtTest(unittest.TestCase):
         h = h.delete(C)
         self.assertEqual(len(h), orig_len - 1)
 
-        # h = h.delete(B)
-        # self.assertEqual(len(h), orig_len - 2)
+        h = h.delete(B)
+        self.assertEqual(len(h), orig_len - 2)
 
-        # h = h.delete(A)
-        # self.assertEqual(len(h), orig_len - 3)
+        h = h.delete(A)
+        self.assertEqual(len(h), orig_len - 3)
 
         self.assertEqual(h.get(D), 'd')
         self.assertEqual(h.get(E), 'e')
@@ -371,9 +371,9 @@ class HamtTest(unittest.TestCase):
 
         orig_len = len(h)
 
-        # BitmapNode(size=6 bitmap=0b100110000 id=0x1085678a8):
+        # BitmapNode(size=6 bitmap=0b100110000):
         #     NULL:
-        #         BitmapNode(size=4 bitmap=0b1000000000000000000001000 id=0x108572300):
+        #         BitmapNode(size=4 bitmap=0b1000000000000000000001000):
         #             <Key name:A hash:100>: 'a'
         #             NULL:
         #                 CollisionNode(size=4 id=0x108572410):
@@ -407,9 +407,9 @@ class HamtTest(unittest.TestCase):
 
         orig_len = len(h)
 
-        # BitmapNode(size=4 bitmap=0b110000 id=0x105158168):
+        # BitmapNode(size=4 bitmap=0b110000):
         #     NULL:
-        #         BitmapNode(size=4 bitmap=0b1000000000000000000001000 id=0x1051580e0):
+        #         BitmapNode(size=4 bitmap=0b1000000000000000000001000):
         #             <Key name:A hash:100>: 'a'
         #             NULL:
         #                 CollisionNode(size=6 id=0x10515ef30):
@@ -447,17 +447,17 @@ class HamtTest(unittest.TestCase):
 
         # ArrayNode(id=0x10f8b9318):
         #     0::
-        #     BitmapNode(size=2 count=1 bitmap=0b1 id=0x10f878ee0):
+        #     BitmapNode(size=2 count=1 bitmap=0b1):
         #         <Key name:0 hash:0>: 'val-0'
         #
         # ... 14 more BitmapNodes ...
-
+        #
         #     15::
-        #     BitmapNode(size=2 count=1 bitmap=0b1 id=0x10f878238):
+        #     BitmapNode(size=2 count=1 bitmap=0b1):
         #         <Key name:15 hash:15>: 'val-15'
         #
         #     16::
-        #     BitmapNode(size=2 count=1 bitmap=0b1 id=0x10f878670):
+        #     BitmapNode(size=2 count=1 bitmap=0b1):
         #         NULL:
         #             CollisionNode(size=4 id=0x10f2f5af8):
         #                 <Key name:16 hash:16>: 'val-16'
