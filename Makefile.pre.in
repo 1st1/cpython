@@ -349,6 +349,7 @@ PYTHON_OBJS=	\
 		Python/pylifecycle.o \
 		Python/pymath.o \
 		Python/pystate.o \
+		Python/context.o \
 		Python/pythonrun.o \
 		Python/pytime.o \
 		Python/bootstrap_hash.o \
@@ -396,7 +397,6 @@ OBJECT_OBJS=	\
 		Objects/listobject.o \
 		Objects/longobject.o \
 		Objects/dictobject.o \
-		Objects/hamtobject.o \
 		Objects/odictobject.o \
 		Objects/memoryobject.o \
 		Objects/methodobject.o \
@@ -954,7 +954,6 @@ PYTHON_HEADERS= \
 		$(srcdir)/Include/floatobject.h \
 		$(srcdir)/Include/frameobject.h \
 		$(srcdir)/Include/funcobject.h \
-		$(srcdir)/Include/hamtobject.h \
 		$(srcdir)/Include/genobject.h \
 		$(srcdir)/Include/import.h \
 		$(srcdir)/Include/intrcheck.h \
@@ -993,6 +992,7 @@ PYTHON_HEADERS= \
 		$(srcdir)/Include/pymem.h \
 		$(srcdir)/Include/pyport.h \
 		$(srcdir)/Include/pystate.h \
+		$(srcdir)/Include/context.h \
 		$(srcdir)/Include/pystrcmp.h \
 		$(srcdir)/Include/pystrtod.h \
 		$(srcdir)/Include/pystrhex.h \
@@ -1020,6 +1020,7 @@ PYTHON_HEADERS= \
 		$(srcdir)/Include/internal/mem.h \
 		$(srcdir)/Include/internal/pygetopt.h \
 		$(srcdir)/Include/internal/pystate.h \
+		$(srcdir)/Include/internal/context.h \
 		$(srcdir)/Include/internal/warnings.h \
 		$(DTRACE_HEADERS)
 

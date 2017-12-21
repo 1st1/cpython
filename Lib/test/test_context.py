@@ -3,6 +3,11 @@ import random
 import unittest
 import weakref
 
+try:
+    from _testcapi import hamt
+except ImportError:
+    hamt = None
+
 
 class HashKey:
     _crasher = None
@@ -71,6 +76,7 @@ class EqError(Exception):
     pass
 
 
+@unittest.skipIf(hamt is None, '_testcapi lacks "hamt()" function')
 class HamtTest(unittest.TestCase):
 
     def test_hashkey_helper_1(self):

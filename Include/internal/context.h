@@ -1,8 +1,5 @@
-#ifndef Py_HAMTOBJECT_H
-#define Py_HAMTOBJECT_H
-#ifdef __cplusplus
-extern "C" {
-#endif
+#ifndef Py_INTERNAL_CONTEXT_H
+#define Py_INTERNAL_CONTEXT_H
 
 
 #define _PyHamtNode_Array_size 32
@@ -48,7 +45,4 @@ PyAPI_DATA(PyTypeObject) _PyHamt_BitmapNode_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_CollisionNode_Type;
 
 
-#ifdef __cplusplus
-}
-#endif
-#endif /* !Py_HAMTOBJECT_H */
+#endif /* !Py_INTERNAL_CONTEXT_H */
