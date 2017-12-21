@@ -1,5 +1,7 @@
+import gc
 import random
 import unittest
+import weakref
 
 
 class HashKey:
@@ -504,6 +506,48 @@ class HamtTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, 'cannot compare'):
             h1 != h2
+
+    def test_hamt_gc_1(self):
+        A = HashKey(100, 'A')
+
+        h = hamt()
+        ref = weakref.ref(h)
+
+        a = []
+        a.append(a)
+        a.append(h)
+        b = []
+        a.append(b)
+        b.append(a)
+        h = h.set(A, b)
+
+        del h, a, b
+
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
+        self.assertIsNone(ref())
+
+    def test_hamt_gc_2(self):
+        A = HashKey(100, 'A')
+        B = HashKey(101, 'B')
+
+        h = hamt()
+        h = h.set(A, 'a')
+        h = h.set(A, h)
+
+        ref = weakref.ref(h)
+        hi = h.items()
+        next(hi)
+
+        del h, hi
+
+        gc.collect()
+        gc.collect()
+        gc.collect()
+
+        self.assertIsNone(ref())
 
 
 if __name__ == "__main__":
