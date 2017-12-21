@@ -37,6 +37,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     _PyHamtNode_BaseNode *h_root;
+    PyObject *h_weakreflist;
     Py_ssize_t h_count;
 } PyHamtObject;
 

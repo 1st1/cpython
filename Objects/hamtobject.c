@@ -1,5 +1,6 @@
 #include "Python.h"
 #include "internal/pystate.h"
+#include "structmember.h"
 
 
 #define IS_ARRAY_NODE(node)     (Py_TYPE(node) == &_PyHamt_ArrayNode_Type)
@@ -2321,6 +2322,7 @@ hamt_alloc(void)
     if (o == NULL) {
         return NULL;
     }
+    o->h_weakreflist = NULL;
     PyObject_GC_Track(o);
     return o;
 }
@@ -2351,10 +2353,13 @@ hamt_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 
 
 static void
-hamt_dealloc(PyObject *self)
+hamt_dealloc(PyHamtObject *self)
 {
     PyObject_GC_UnTrack(self);
-    (void)hamt_clear((PyHamtObject*)self);
+    if (self->h_weakreflist != NULL) {
+        PyObject_ClearWeakRefs((PyObject*)self);
+    }
+    (void)hamt_clear(self);
     Py_TYPE(self)->tp_free(self);
 }
 
@@ -2519,6 +2524,7 @@ PyTypeObject PyHamt_Type = {
     .tp_traverse = (traverseproc)hamt_traverse,
     .tp_clear = (inquiry)hamt_clear,
     .tp_new = hamt_tp_new,
+    .tp_weaklistoffset = offsetof(PyHamtObject, h_weakreflist),
 };
 
 
