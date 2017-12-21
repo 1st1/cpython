@@ -10,7 +10,7 @@
 
 
 typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
-typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NONEMPTY} hamt_without_t;
+typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
 
 
 #ifndef PyHamtNode_Bitmap_MAXSAVESIZE
@@ -735,11 +735,11 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
                     return W_ERROR;
                 }
                 else {
-                    return W_NONEMPTY;
+                    return W_NEWNODE;
                 }
             }
 
-            case W_NONEMPTY: {
+            case W_NEWNODE: {
                 assert(sub_node != NULL);
 
                 if (IS_BITMAP_NODE(sub_node)) {
@@ -773,7 +773,7 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
                         Py_DECREF(sub_tree);
 
                         *new_node = (_PyHamtNode_BaseNode *)clone;
-                        return W_NONEMPTY;
+                        return W_NEWNODE;
                     }
                 }
 
@@ -792,7 +792,7 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
                           (PyObject *)sub_node);  /* borrow */
 
                 *new_node = (_PyHamtNode_BaseNode *)clone;
-                return W_NONEMPTY;
+                return W_NEWNODE;
             }
 
             case W_ERROR:
@@ -822,7 +822,7 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
             return W_ERROR;
         }
 
-        return W_NONEMPTY;
+        return W_NEWNODE;
     }
 }
 
@@ -1256,7 +1256,7 @@ hamt_node_collision_without(PyHamtNode_Collision *self,
                 node->b_bitmap = hamt_bitpos(hash, shift);
 
                 *new_node = (_PyHamtNode_BaseNode *)node;
-                return W_NONEMPTY;
+                return W_NEWNODE;
             }
 
             /* Allocate a new Collision node with capacity for one
@@ -1277,7 +1277,7 @@ hamt_node_collision_without(PyHamtNode_Collision *self,
             }
 
             *new_node = (_PyHamtNode_BaseNode*)new;
-            return W_NONEMPTY;
+            return W_NEWNODE;
     }
 }
 
@@ -1555,7 +1555,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
             assert(sub_node == NULL);
             return res;
 
-        case W_NONEMPTY: {
+        case W_NEWNODE: {
             /* We need to replace a node at the `idx` index.
                Clone this node and replace.
             */
@@ -1569,7 +1569,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
 
             Py_SETREF(clone->a_array[idx], sub_node);  /* borrow */
             *new_node = (_PyHamtNode_BaseNode*)clone;  /* borrow */
-            return W_NONEMPTY;
+            return W_NEWNODE;
         }
 
         case W_EMPTY: {
@@ -1599,7 +1599,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
                 Py_CLEAR(new->a_array[idx]);
 
                 *new_node = (_PyHamtNode_BaseNode*)new;  /* borrow */
-                return W_NONEMPTY;
+                return W_NEWNODE;
             }
 
             /* New Array node would have less than 16 key/value
@@ -1681,7 +1681,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
 
             new->b_bitmap = bitmap;
             *new_node = (_PyHamtNode_BaseNode*)new;  /* borrow */
-            return W_NONEMPTY;
+            return W_NEWNODE;
         }
     }
 }
@@ -2223,7 +2223,7 @@ hamt_without(PyHamtObject *o, PyObject *key)
         case W_NOT_FOUND:
             Py_INCREF(o);
             return o;
-        case W_NONEMPTY: {
+        case W_NEWNODE: {
             PyHamtObject *new_o = hamt_alloc();
             if (new_o == NULL) {
                 Py_DECREF(new_root);
