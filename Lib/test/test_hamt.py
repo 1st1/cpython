@@ -159,7 +159,8 @@ class HamtTest(unittest.TestCase):
                     dm = d.copy()
 
                 if not (i % 900):
-                    self.assertEqual(set(h.items()), set(d.items()))
+                    self.assertEqual(set(h.keys()), set(d.keys()))
+                    self.assertEqual(len(h.keys()), len(d.keys()))
 
             self.assertEqual(len(d), 0)
             self.assertEqual(len(h), 0)
@@ -170,11 +171,15 @@ class HamtTest(unittest.TestCase):
                 self.assertEqual(hm.get(str(key)), dm[key])
             self.assertEqual(len(dm), len(hm))
 
-            for key in keys_to_delete:
+            for i, key in enumerate(keys_to_delete):
                 hm = hm.delete(str(key))
                 self.assertEqual(hm.get(str(key), 'not found'), 'not found')
                 dm.pop(str(key), None)
                 self.assertEqual(len(d), len(h))
+
+                if not (i % 500):
+                    self.assertEqual(set(h.values()), set(d.values()))
+                    self.assertEqual(len(h.values()), len(d.values()))
 
             self.assertEqual(len(d), 0)
             self.assertEqual(len(h), 0)
