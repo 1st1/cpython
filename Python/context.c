@@ -2,6 +2,8 @@
 #include "internal/pystate.h"
 #include "structmember.h"
 
+#include "internal/context.h"
+
 
 #define IS_ARRAY_NODE(node)     (Py_TYPE(node) == &_PyHamt_ArrayNode_Type)
 #define IS_BITMAP_NODE(node)    (Py_TYPE(node) == &_PyHamt_BitmapNode_Type)
@@ -97,6 +99,13 @@ hamt_node_dump(_PyHamtNode_BaseNode *node,
 #else
 #define VALIDATE_ARRAY_NODE(NODE)
 #endif
+
+
+PyObject *
+_PyContext_NewForTests(void)
+{
+    return (PyObject *)hamt_new_empty();
+}
 
 
 /* Returns -1 on error */
