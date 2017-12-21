@@ -634,6 +634,26 @@ class HamtTest(unittest.TestCase):
 
         self.assertIsNone(ref())
 
+    def test_hamt_in_1(self):
+        A = HashKey(100, 'A')
+        AA = HashKey(100, 'A')
+
+        B = HashKey(101, 'B')
+
+        h = hamt()
+        h = h.set(A, 1)
+
+        self.assertTrue(A in h)
+        self.assertFalse(B in h)
+
+        with self.assertRaises(EqError):
+            with HaskKeyCrasher(error_on_eq=True):
+                AA in h
+
+        with self.assertRaises(HashingError):
+            with HaskKeyCrasher(error_on_hash=True):
+                AA in h
+
 
 if __name__ == "__main__":
     unittest.main()

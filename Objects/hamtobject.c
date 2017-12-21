@@ -2517,6 +2517,21 @@ hamt_py_get(PyHamtObject *self, PyObject *args)
     }
 }
 
+static int
+hamt_py_contains(PyHamtObject *self, PyObject *key)
+{
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return -1;
+        case F_FOUND:
+            return 1;
+        case F_NOT_FOUND:
+            return 0;
+    }
+}
+
 static PyObject *
 hamt_py_delete(PyHamtObject *self, PyObject *key)
 {
@@ -2568,6 +2583,19 @@ static PyMethodDef PyHamt_methods[] = {
     {NULL, NULL}
 };
 
+static PySequenceMethods PyHamt_as_sequence = {
+    0,                              /* sq_length */
+    0,                              /* sq_concat */
+    0,                              /* sq_repeat */
+    0,                              /* sq_item */
+    0,                              /* sq_slice */
+    0,                              /* sq_ass_item */
+    0,                              /* sq_ass_slice */
+    (objobjproc)hamt_py_contains,   /* sq_contains */
+    0,                              /* sq_inplace_concat */
+    0,                              /* sq_inplace_repeat */
+};
+
 static PyMappingMethods PyHamt_as_mapping = {
     (lenfunc)hamt_py_len,
 };
@@ -2582,6 +2610,7 @@ PyTypeObject PyHamt_Type = {
     sizeof(PyHamtObject),
     .tp_methods = PyHamt_methods,
     .tp_as_mapping = &PyHamt_as_mapping,
+    .tp_as_sequence = &PyHamt_as_sequence,
     .tp_dealloc = (destructor)hamt_dealloc,
     .tp_getattro = PyObject_GenericGetAttr,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
