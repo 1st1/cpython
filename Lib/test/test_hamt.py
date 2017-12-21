@@ -126,14 +126,18 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(len(h5), 3)
 
     def test_hamt_stress_1(self):
-        for _ in range(5):
+        for _ in range(3):
             h = hamt()
             d = dict()
             N = 10000
-            for key in range(N):
+            for i, key in enumerate(range(N)):
                 h = h.set(str(key), key)
                 d[str(key)] = key
                 self.assertEqual(len(d), len(h))
+
+                if not (i % 900):
+                    self.assertEqual(set(h.items()), set(d.items()))
+
             self.assertEqual(len(h), N)
 
             for key in range(N):
@@ -151,7 +155,7 @@ class HamtTest(unittest.TestCase):
                     hm = h
                     dm = d.copy()
 
-                if not (i % 500):
+                if not (i % 900):
                     self.assertEqual(set(h.items()), set(d.items()))
 
             self.assertEqual(len(d), 0)
