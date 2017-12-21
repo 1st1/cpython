@@ -128,25 +128,29 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(len(h5), 3)
 
     def test_hamt_stress_1(self):
-        for _ in range(3):
+        COLLECTION_SIZE = 10000
+        TEST_ITERS_EVERY = 555
+        RUN_XTIMES = 3
+
+        for _ in range(RUN_XTIMES):
             h = hamt()
             d = dict()
-            N = 10000
-            for i, key in enumerate(range(N)):
+
+            for i, key in enumerate(range(COLLECTION_SIZE)):
                 h = h.set(str(key), key)
                 d[str(key)] = key
                 self.assertEqual(len(d), len(h))
 
-                if not (i % 900):
+                if not (i % TEST_ITERS_EVERY):
                     self.assertEqual(set(h.items()), set(d.items()))
                     self.assertEqual(len(h.items()), len(d.items()))
 
-            self.assertEqual(len(h), N)
+            self.assertEqual(len(h), COLLECTION_SIZE)
 
-            for key in range(N):
+            for key in range(COLLECTION_SIZE):
                 self.assertEqual(h.get(str(key), 'not found'), key)
 
-            keys_to_delete = list(range(N))
+            keys_to_delete = list(range(COLLECTION_SIZE))
             random.shuffle(keys_to_delete)
             for i, key in enumerate(keys_to_delete):
                 h = h.delete(str(key))
@@ -154,11 +158,11 @@ class HamtTest(unittest.TestCase):
                 del d[str(key)]
                 self.assertEqual(len(d), len(h))
 
-                if i == N // 2:
+                if i == COLLECTION_SIZE // 2:
                     hm = h
                     dm = d.copy()
 
-                if not (i % 900):
+                if not (i % TEST_ITERS_EVERY):
                     self.assertEqual(set(h.keys()), set(d.keys()))
                     self.assertEqual(len(h.keys()), len(d.keys()))
 
@@ -177,12 +181,13 @@ class HamtTest(unittest.TestCase):
                 dm.pop(str(key), None)
                 self.assertEqual(len(d), len(h))
 
-                if not (i % 500):
+                if not (i % TEST_ITERS_EVERY):
                     self.assertEqual(set(h.values()), set(d.values()))
                     self.assertEqual(len(h.values()), len(d.values()))
 
             self.assertEqual(len(d), 0)
             self.assertEqual(len(h), 0)
+            self.assertEqual(list(h.items()), [])
 
     def test_hamt_delete_1(self):
         A = HashKey(100, 'A')
@@ -449,6 +454,11 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(
             set(list(it)),
             {(A, 'a'), (B, 'b'), (C, 'c'), (D, 'd'), (E, 'e'), (F, 'f')})
+
+    def test_hamt_items_3(self):
+        h = hamt()
+        self.assertEqual(len(h.items()), 0)
+        self.assertEqual(list(h.items()), [])
 
     def test_hamt_eq_1(self):
         A = HashKey(100, 'A')
