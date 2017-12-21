@@ -149,6 +149,9 @@ class HamtTest(unittest.TestCase):
                     hm = h
                     dm = d.copy()
 
+                if not (i % 100):
+                    self.assertEqual(set(h.items()), set(d.items()))
+
             self.assertEqual(len(d), 0)
             self.assertEqual(len(h), 0)
 
@@ -390,6 +393,50 @@ class HamtTest(unittest.TestCase):
         for key in keys:
             h = h.delete(key)
         self.assertEqual(len(h), 0)
+
+    def test_hamt_items_1(self):
+        A = HashKey(100, 'A')
+        B = HashKey(201001, 'B')
+        C = HashKey(101001, 'C')
+        D = HashKey(103, 'D')
+        E = HashKey(104, 'E')
+        F = HashKey(110, 'F')
+
+        h = hamt()
+        h = h.set(A, 'a')
+        h = h.set(B, 'b')
+        h = h.set(C, 'c')
+        h = h.set(D, 'd')
+        h = h.set(E, 'e')
+        h = h.set(F, 'f')
+
+        print(h.__dump__())
+
+        it = h.items()
+        self.assertEqual(
+            set(list(it)),
+            {(A, 'a'), (B, 'b'), (C, 'c'), (D, 'd'), (E, 'e'), (F, 'f')})
+
+    def test_hamt_items_2(self):
+        A = HashKey(100, 'A')
+        B = HashKey(101, 'B')
+        C = HashKey(100100, 'C')
+        D = HashKey(100100, 'D')
+        E = HashKey(100100, 'E')
+        F = HashKey(110, 'F')
+
+        h = hamt()
+        h = h.set(A, 'a')
+        h = h.set(B, 'b')
+        h = h.set(C, 'c')
+        h = h.set(D, 'd')
+        h = h.set(E, 'e')
+        h = h.set(F, 'f')
+
+        it = h.items()
+        self.assertEqual(
+            set(list(it)),
+            {(A, 'a'), (B, 'b'), (C, 'c'), (D, 'd'), (E, 'e'), (F, 'f')})
 
 
 if __name__ == "__main__":
