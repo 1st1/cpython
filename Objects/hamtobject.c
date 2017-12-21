@@ -1942,15 +1942,15 @@ typedef struct {
     _PyHamtNode_BaseNode *i_nodes[HAMT_MAX_TREE_DEPTH];
     Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
     int8_t i_level;
-} PyHamtIterator;
+} PyHamtIteratorState;
 
 
 static hamt_iter_t
-hamt_iterator_next(PyHamtIterator *iter, PyObject **key, PyObject **val);
+hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val);
 
 
 static void
-hamt_iterator_init(PyHamtIterator *iter, _PyHamtNode_BaseNode *root)
+hamt_iterator_init(PyHamtIteratorState *iter, _PyHamtNode_BaseNode *root)
 {
     for (uint32_t i = 0; i < HAMT_MAX_TREE_DEPTH; i++) {
         iter->i_nodes[i] = NULL;
@@ -1963,7 +1963,7 @@ hamt_iterator_init(PyHamtIterator *iter, _PyHamtNode_BaseNode *root)
 
 
 static hamt_iter_t
-hamt_iterator_bitmap_next(PyHamtIterator *iter,
+hamt_iterator_bitmap_next(PyHamtIteratorState *iter,
                           PyObject **key, PyObject **val)
 {
     int8_t level = iter->i_level;
@@ -1996,7 +1996,7 @@ hamt_iterator_bitmap_next(PyHamtIterator *iter,
 
 
 static hamt_iter_t
-hamt_iterator_collision_next(PyHamtIterator *iter,
+hamt_iterator_collision_next(PyHamtIteratorState *iter,
                              PyObject **key, PyObject **val)
 {
     int8_t level = iter->i_level;
@@ -2017,7 +2017,7 @@ hamt_iterator_collision_next(PyHamtIterator *iter,
 
 
 static hamt_iter_t
-hamt_iterator_array_next(PyHamtIterator *iter,
+hamt_iterator_array_next(PyHamtIteratorState *iter,
                          PyObject **key, PyObject **val)
 {
     int8_t level = iter->i_level;
@@ -2049,7 +2049,7 @@ hamt_iterator_array_next(PyHamtIterator *iter,
 
 
 static hamt_iter_t
-hamt_iterator_next(PyHamtIterator *iter, PyObject **key, PyObject **val)
+hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val)
 {
     if (iter->i_level < 0) {
         return I_END;
@@ -2076,7 +2076,7 @@ hamt_iterator_next(PyHamtIterator *iter, PyObject **key, PyObject **val)
 typedef struct {
     PyObject_HEAD
     PyHamtObject *hi_obj;
-    PyHamtIterator hi_iter;
+    PyHamtIteratorState hi_iter;
 } PyHamtItems;
 
 
@@ -2256,7 +2256,7 @@ hamt_eq(PyHamtObject *v, PyHamtObject *w)
         return 0;
     }
 
-    PyHamtIterator iter;
+    PyHamtIteratorState iter;
     hamt_iter_t iter_res;
     hamt_find_t find_res;
     PyObject *v_key;
