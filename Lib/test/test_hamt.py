@@ -5,6 +5,8 @@ import weakref
 
 
 class HashKey:
+    _crasher = None
+
     def __init__(self, hash, name, *, error_on_eq_to=None):
         assert hash != -1
         self.name = name
@@ -15,11 +17,17 @@ class HashKey:
         return f'<Key name:{self.name} hash:{self.hash}>'
 
     def __hash__(self):
+        if self._crasher is not None and self._crasher.error_on_hash:
+            raise HashingError
+
         return self.hash
 
     def __eq__(self, other):
         if not isinstance(other, HashKey):
             return NotImplemented
+
+        if self._crasher is not None and self._crasher.error_on_eq:
+            raise EqError
 
         if self.error_on_eq_to is not None and self.error_on_eq_to is other:
             raise ValueError(f'cannot compare {self!r} to {other!r}')
@@ -27,6 +35,40 @@ class HashKey:
             raise ValueError(f'cannot compare {other!r} to {self!r}')
 
         return (self.name, self.hash) == (other.name, other.hash)
+
+
+class KeyStr(str):
+    def __hash__(self):
+        if HashKey._crasher is not None and HashKey._crasher.error_on_hash:
+            raise HashingError
+        return super().__hash__()
+
+    def __eq__(self, other):
+        if HashKey._crasher is not None and HashKey._crasher.error_on_eq:
+            raise EqError
+        return super().__eq__(other)
+
+
+class HaskKeyCrasher:
+    def __init__(self, *, error_on_hash=False, error_on_eq=False):
+        self.error_on_hash = error_on_hash
+        self.error_on_eq = error_on_eq
+
+    def __enter__(self):
+        if HashKey._crasher is not None:
+            raise RuntimeError('cannot nest crashers')
+        HashKey._crasher = self
+
+    def __exit__(self, *exc):
+        HashKey._crasher = None
+
+
+class HashingError(Exception):
+    pass
+
+
+class EqError(Exception):
+    pass
 
 
 class HamtTest(unittest.TestCase):
@@ -129,16 +171,31 @@ class HamtTest(unittest.TestCase):
 
     def test_hamt_stress_1(self):
         COLLECTION_SIZE = 10000
-        TEST_ITERS_EVERY = 555
+        TEST_ITERS_EVERY = 997
+        CRASH_HASH_EVERY = 97
+        CRASH_EQ_EVERY = 11
         RUN_XTIMES = 3
 
         for _ in range(RUN_XTIMES):
             h = hamt()
             d = dict()
 
-            for i, key in enumerate(range(COLLECTION_SIZE)):
-                h = h.set(str(key), key)
-                d[str(key)] = key
+            for i in range(COLLECTION_SIZE):
+                key = KeyStr(i)
+
+                if not (i % CRASH_HASH_EVERY):
+                    with HaskKeyCrasher(error_on_hash=True):
+                        with self.assertRaises(HashingError):
+                            h.set(key, i)
+
+                h = h.set(key, i)
+
+                if not (i % CRASH_EQ_EVERY):
+                    with HaskKeyCrasher(error_on_eq=True):
+                        with self.assertRaises(EqError):
+                            h.get(KeyStr(i))  # really trigger __eq__
+
+                d[key] = i
                 self.assertEqual(len(d), len(h))
 
                 if not (i % TEST_ITERS_EVERY):
@@ -148,21 +205,33 @@ class HamtTest(unittest.TestCase):
             self.assertEqual(len(h), COLLECTION_SIZE)
 
             for key in range(COLLECTION_SIZE):
-                self.assertEqual(h.get(str(key), 'not found'), key)
+                self.assertEqual(h.get(KeyStr(key), 'not found'), key)
 
             keys_to_delete = list(range(COLLECTION_SIZE))
             random.shuffle(keys_to_delete)
-            for i, key in enumerate(keys_to_delete):
-                h = h.delete(str(key))
-                self.assertEqual(h.get(str(key), 'not found'), 'not found')
-                del d[str(key)]
+            for iter_i, i in enumerate(keys_to_delete):
+                key = KeyStr(i)
+
+                if not (iter_i % CRASH_HASH_EVERY):
+                    with HaskKeyCrasher(error_on_hash=True):
+                        with self.assertRaises(HashingError):
+                            h.delete(key)
+
+                if not (iter_i % CRASH_EQ_EVERY):
+                    with HaskKeyCrasher(error_on_eq=True):
+                        with self.assertRaises(EqError):
+                            h.delete(KeyStr(i))
+
+                h = h.delete(key)
+                self.assertEqual(h.get(key, 'not found'), 'not found')
+                del d[key]
                 self.assertEqual(len(d), len(h))
 
-                if i == COLLECTION_SIZE // 2:
+                if iter_i == COLLECTION_SIZE // 2:
                     hm = h
                     dm = d.copy()
 
-                if not (i % TEST_ITERS_EVERY):
+                if not (iter_i % TEST_ITERS_EVERY):
                     self.assertEqual(set(h.keys()), set(d.keys()))
                     self.assertEqual(len(h.keys()), len(d.keys()))
 
