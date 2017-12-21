@@ -1938,8 +1938,14 @@ typedef enum {I_ITEM, I_END} hamt_iter_t;
 
 #define HAMT_MAX_TREE_DEPTH 7
 
-
 typedef struct {
+    /* HAMT is an immutable collection.  Iterators will hold a
+       strong reference to it, and every node in the HAMT has
+       strong references to its children.
+
+       So for iterators, we can implement zero allocations
+       and zero inc/dec ref depth-first iteration.
+    */
     _PyHamtNode_BaseNode *i_nodes[HAMT_MAX_TREE_DEPTH];
     Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
     int8_t i_level;
@@ -2084,7 +2090,6 @@ typedef struct {
     PyHamtIteratorState hi_iter;
 } PyHamtItems;
 
-
 static void
 PyHamtItems_dealloc(PyHamtItems *it)
 {
@@ -2128,11 +2133,22 @@ PyHamtItems_iternext(PyHamtItems *it)
     }
 }
 
+static Py_ssize_t
+PyHamtItems_len(PyHamtItems *it)
+{
+    return it->hi_obj->h_count;
+}
+
+static PyMappingMethods PyHamtItems_as_mapping = {
+    (lenfunc)PyHamtItems_len,
+};
+
 static PyTypeObject PyHamtItems_Type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "Items",
+    "items",
     .tp_basicsize = sizeof(PyHamtItems),
     .tp_itemsize = 0,
+    .tp_as_mapping = &PyHamtItems_as_mapping,
     .tp_dealloc = (destructor)PyHamtItems_dealloc,
     .tp_getattro = PyObject_GenericGetAttr,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
