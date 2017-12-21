@@ -133,6 +133,7 @@ class HamtTest(unittest.TestCase):
             for key in range(N):
                 h = h.set(str(key), key)
                 d[str(key)] = key
+                self.assertEqual(len(d), len(h))
             self.assertEqual(len(h), N)
 
             for key in range(N):
@@ -144,6 +145,7 @@ class HamtTest(unittest.TestCase):
                 h = h.delete(str(key))
                 self.assertEqual(h.get(str(key), 'not found'), 'not found')
                 del d[str(key)]
+                self.assertEqual(len(d), len(h))
 
                 if i == N // 2:
                     hm = h
@@ -165,6 +167,7 @@ class HamtTest(unittest.TestCase):
                 hm = hm.delete(str(key))
                 self.assertEqual(hm.get(str(key), 'not found'), 'not found')
                 dm.pop(str(key), None)
+                self.assertEqual(len(d), len(h))
 
             self.assertEqual(len(d), 0)
             self.assertEqual(len(h), 0)
