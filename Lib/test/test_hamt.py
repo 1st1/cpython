@@ -440,6 +440,7 @@ class HamtTest(unittest.TestCase):
         B = HashKey(101, 'B')
         C = HashKey(100100, 'C')
         D = HashKey(100100, 'D')
+        E = HashKey(120, 'E')
 
         h1 = hamt()
         h1 = h1.set(A, 'a')
@@ -468,6 +469,34 @@ class HamtTest(unittest.TestCase):
         h2 = h2.set(D, 'd')
         self.assertTrue(h1 == h2)
         self.assertFalse(h1 != h2)
+
+        h2 = h2.set(E, 'e')
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+        h2 = h2.delete(D)
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+        h2 = h2.set(E, 'd')
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+    def test_hamt_eq_2(self):
+        A = HashKey(100, 'A')
+        Er = HashKey(100, 'Er', error_on_eq_to=A)
+
+        h1 = hamt()
+        h1 = h1.set(A, 'a')
+
+        h2 = hamt()
+        h2 = h2.set(Er, 'a')
+
+        with self.assertRaisesRegex(ValueError, 'cannot compare'):
+            h1 == h2
+
+        with self.assertRaisesRegex(ValueError, 'cannot compare'):
+            h1 != h2
 
 
 if __name__ == "__main__":
