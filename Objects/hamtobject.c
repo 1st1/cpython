@@ -1929,6 +1929,229 @@ hamt_node_dump(_PyHamtNode_BaseNode *node,
 #endif  /* Py_DEBUG */
 
 
+/////////////////////////////////// Iterators: Machinery
+
+
+typedef enum {I_ITEM, I_END} hamt_iter_t;
+
+
+#define HAMT_MAX_TREE_DEPTH 6
+
+
+typedef struct {
+    _PyHamtNode_BaseNode *i_nodes[HAMT_MAX_TREE_DEPTH];
+    Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
+    int8_t i_level;
+} PyHamtIterator;
+
+
+static hamt_iter_t
+hamt_iterator_next(PyHamtIterator *iter, PyObject **key, PyObject **val);
+
+
+static void
+hamt_iterator_init(PyHamtIterator *iter, _PyHamtNode_BaseNode *root)
+{
+    for (uint32_t i = 0; i < HAMT_MAX_TREE_DEPTH; i++) {
+        iter->i_nodes[i] = NULL;
+        iter->i_pos[i] = 0;
+    }
+
+    iter->i_level = 0;
+    iter->i_nodes[0] = root;
+}
+
+
+static hamt_iter_t
+hamt_iterator_bitmap_next(PyHamtIterator *iter,
+                          PyObject **key, PyObject **val)
+{
+    int8_t level = iter->i_level;
+
+    PyHamtNode_Bitmap *node = (PyHamtNode_Bitmap *)(iter->i_nodes[level]);
+    Py_ssize_t pos = iter->i_pos[level];
+
+    if (pos + 1 >= Py_SIZE(node)) {
+        iter->i_level--;
+        return hamt_iterator_next(iter, key, val);
+    }
+
+    if (node->b_array[pos] == NULL) {
+        iter->i_pos[level] = pos + 2;
+
+        int8_t next_level = level + 1;
+        iter->i_level = next_level;
+        iter->i_pos[next_level] = 0;
+        iter->i_nodes[next_level] = (_PyHamtNode_BaseNode *)
+            node->b_array[pos + 1];
+
+        return hamt_iterator_next(iter, key, val);
+    }
+
+    *key = node->b_array[pos];
+    *val = node->b_array[pos + 1];
+    iter->i_pos[level] = pos + 2;
+    return I_ITEM;
+}
+
+
+static hamt_iter_t
+hamt_iterator_collision_next(PyHamtIterator *iter,
+                             PyObject **key, PyObject **val)
+{
+    int8_t level = iter->i_level;
+
+    PyHamtNode_Collision *node = (PyHamtNode_Collision *)(iter->i_nodes[level]);
+    Py_ssize_t pos = iter->i_pos[level];
+
+    if (pos + 1 >= Py_SIZE(node)) {
+        iter->i_level--;
+        return hamt_iterator_next(iter, key, val);
+    }
+
+    *key = node->c_array[pos];
+    *val = node->c_array[pos + 1];
+    iter->i_pos[level] = pos + 2;
+    return I_ITEM;
+}
+
+static hamt_iter_t
+hamt_iterator_array_next(PyHamtIterator *iter,
+                         PyObject **key, PyObject **val)
+{
+    int8_t level = iter->i_level;
+
+    PyHamtNode_Array *node = (PyHamtNode_Array *)(iter->i_nodes[level]);
+    Py_ssize_t pos = iter->i_pos[level];
+
+    if (pos >= _PyHamtNode_Array_size) {
+        iter->i_level--;
+        return hamt_iterator_next(iter, key, val);
+    }
+
+    for (Py_ssize_t i = pos; i < _PyHamtNode_Array_size; i++) {
+        if (node->a_array[i] != NULL) {
+            iter->i_pos[level] = i + 1;
+
+            int8_t next_level = level + 1;
+            iter->i_pos[next_level] = 0;
+            iter->i_nodes[next_level] = node->a_array[i];
+            iter->i_level = next_level;
+
+            return hamt_iterator_next(iter, key, val);
+        }
+    }
+
+    iter->i_level--;
+    return hamt_iterator_next(iter, key, val);
+}
+
+
+static hamt_iter_t
+hamt_iterator_next(PyHamtIterator *iter, PyObject **key, PyObject **val)
+{
+    if (iter->i_level < 0) {
+        return I_END;
+    }
+
+    _PyHamtNode_BaseNode *current = iter->i_nodes[iter->i_level];
+
+    if (IS_BITMAP_NODE(current)) {
+        return hamt_iterator_bitmap_next(iter, key, val);
+    }
+    else if (IS_ARRAY_NODE(current)) {
+        return hamt_iterator_array_next(iter, key, val);
+    }
+    else {
+        assert(IS_COLLISION_NODE(current));
+        return hamt_iterator_collision_next(iter, key, val);
+    }
+}
+
+
+/////////////////////////////////// Iterators: Items
+
+
+typedef struct {
+    PyObject_HEAD
+    PyHamtObject *hi_obj;
+    PyHamtIterator hi_iter;
+} PyHamtItems;
+
+
+static void
+PyHamtItems_dealloc(PyHamtItems *it)
+{
+    PyObject_GC_UnTrack(it);
+    Py_CLEAR(it->hi_obj);
+    PyObject_GC_Del(it);
+}
+
+static int
+PyHamtItems_traverse(PyHamtItems *it, visitproc visit, void *arg)
+{
+    Py_VISIT(it->hi_obj);
+    return 0;
+}
+
+static PyObject *
+PyHamtItems_iternext(PyHamtItems *it)
+{
+    PyObject *key;
+    PyObject *val;
+    hamt_iter_t res = hamt_iterator_next(&it->hi_iter, &key, &val);
+
+    switch (res) {
+        case I_END:
+            PyErr_SetNone(PyExc_StopIteration);
+            return NULL;
+
+        case I_ITEM: {
+            PyObject *tup = PyTuple_New(2);
+            if (tup == NULL) {
+                return tup;
+            }
+
+            Py_INCREF(key);
+            PyTuple_SET_ITEM(tup, 0, key);
+            Py_INCREF(val);
+            PyTuple_SET_ITEM(tup, 1, val);
+
+            return tup;
+        }
+    }
+}
+
+static PyTypeObject PyHamtItems_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "Items",
+    .tp_basicsize = sizeof(PyHamtItems),
+    .tp_itemsize = 0,
+    .tp_dealloc = (destructor)PyHamtItems_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)PyHamtItems_traverse,
+    .tp_iter = PyObject_SelfIter,
+    .tp_iternext = (iternextfunc)PyHamtItems_iternext,
+};
+
+static PyObject *
+PyHamtItems_new(PyHamtObject *o)
+{
+    PyHamtItems *it = PyObject_GC_New(PyHamtItems, &PyHamtItems_Type);
+    if (it == NULL) {
+        return NULL;
+    }
+
+    Py_INCREF(o);
+    it->hi_obj = o;
+
+    hamt_iterator_init(&it->hi_iter, o->h_root);
+
+    return (PyObject*)it;
+}
+
+
 /////////////////////////////////// Hamt Object
 
 
@@ -2166,6 +2389,13 @@ hamt_py_delete(PyHamtObject *self, PyObject *key)
 }
 
 
+static PyObject *
+hamt_py_items(PyHamtObject *self, PyObject *args)
+{
+    return PyHamtItems_new(self);
+}
+
+
 #ifdef Py_DEBUG
 static PyObject *
 hamt_py_dump(PyHamtObject *self, PyObject *args)
@@ -2186,6 +2416,7 @@ static PyMethodDef PyHamt_methods[] = {
     {"set", (PyCFunction)hamt_py_set, METH_VARARGS, NULL},
     {"get", (PyCFunction)hamt_py_get, METH_VARARGS, NULL},
     {"delete", (PyCFunction)hamt_py_delete, METH_O, NULL},
+    {"items", (PyCFunction)hamt_py_items, METH_NOARGS, NULL},
 #ifdef Py_DEBUG
     {"__dump__", (PyCFunction)hamt_py_dump, METH_NOARGS, NULL},
 #endif
