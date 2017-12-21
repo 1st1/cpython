@@ -139,6 +139,7 @@ class HamtTest(unittest.TestCase):
 
                 if not (i % 900):
                     self.assertEqual(set(h.items()), set(d.items()))
+                    self.assertEqual(len(h.items()), len(d.items()))
 
             self.assertEqual(len(h), N)
 
