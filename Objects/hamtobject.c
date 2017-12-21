@@ -1975,6 +1975,10 @@ hamt_iterator_bitmap_next(PyHamtIteratorState *iter,
     Py_ssize_t pos = iter->i_pos[level];
 
     if (pos + 1 >= Py_SIZE(node)) {
+#ifdef Py_DEBUG
+        assert(iter->i_level >= 0);
+        iter->i_nodes[iter->i_level] = NULL;
+#endif
         iter->i_level--;
         return hamt_iterator_next(iter, key, val);
     }
@@ -2009,6 +2013,10 @@ hamt_iterator_collision_next(PyHamtIteratorState *iter,
     Py_ssize_t pos = iter->i_pos[level];
 
     if (pos + 1 >= Py_SIZE(node)) {
+#ifdef Py_DEBUG
+        assert(iter->i_level >= 0);
+        iter->i_nodes[iter->i_level] = NULL;
+#endif
         iter->i_level--;
         return hamt_iterator_next(iter, key, val);
     }
@@ -2030,6 +2038,10 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
     Py_ssize_t pos = iter->i_pos[level];
 
     if (pos >= _PyHamtNode_Array_size) {
+#ifdef Py_DEBUG
+        assert(iter->i_level >= 0);
+        iter->i_nodes[iter->i_level] = NULL;
+#endif
         iter->i_level--;
         return hamt_iterator_next(iter, key, val);
     }
@@ -2047,6 +2059,11 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
             return hamt_iterator_next(iter, key, val);
         }
     }
+
+#ifdef Py_DEBUG
+        assert(iter->i_level >= 0);
+        iter->i_nodes[iter->i_level] = NULL;
+#endif
 
     iter->i_level--;
     return hamt_iterator_next(iter, key, val);
