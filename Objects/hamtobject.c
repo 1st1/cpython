@@ -8,6 +8,8 @@
 #define IS_BITMAP_NODE(node)    (Py_TYPE(node) == &_PyHamt_BitmapNode_Type)
 #define IS_COLLISION_NODE(node) (Py_TYPE(node) == &_PyHamt_CollisionNode_Type)
 
+#define PyHamt_Check(o) (Py_TYPE(o) == &PyHamt_Type)
+
 
 typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
 typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NONEMPTY} hamt_without_t;
@@ -2015,6 +2017,7 @@ hamt_iterator_collision_next(PyHamtIterator *iter,
     return I_ITEM;
 }
 
+
 static hamt_iter_t
 hamt_iterator_array_next(PyHamtIterator *iter,
                          PyObject **key, PyObject **val)
@@ -2249,6 +2252,50 @@ hamt_find(PyHamtObject *o, PyObject *key, PyObject **val)
 
 
 static int
+hamt_eq(PyHamtObject *v, PyHamtObject *w)
+{
+    if (v->h_count != w->h_count) {
+        return 0;
+    }
+
+    PyHamtIterator iter;
+    hamt_iter_t iter_res;
+    hamt_find_t find_res;
+    PyObject *v_key;
+    PyObject *v_val;
+    PyObject *w_val;
+
+    hamt_iterator_init(&iter, v->h_root);
+
+    do {
+        iter_res = hamt_iterator_next(&iter, &v_key, &v_val);
+        if (iter_res == I_ITEM) {
+            find_res = hamt_find(w, v_key, &w_val);
+            switch (find_res) {
+                case F_ERROR:
+                    return -1;
+
+                case F_NOT_FOUND:
+                    return 0;
+
+                case F_FOUND: {
+                    int cmp = PyObject_RichCompareBool(v_val, w_val, Py_EQ);
+                    if (cmp < 0) {
+                        return -1;
+                    }
+                    if (cmp == 0) {
+                        return 0;
+                    }
+                }
+            }
+        }
+    } while (iter_res != I_END);
+
+    return 1;
+}
+
+
+static int
 hamt_clear(PyHamtObject *self)
 {
     Py_CLEAR(self->h_root);
@@ -2336,6 +2383,31 @@ error:
 
 
 /////////////////////////////////// Hamt Methods
+
+
+static PyObject *
+hamt_py_richcompare(PyObject *v, PyObject *w, int op)
+{
+    if (!PyHamt_Check(v) || !PyHamt_Check(w) || (op != Py_EQ && op != Py_NE)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    int res = hamt_eq((PyHamtObject *)v, (PyHamtObject *)w);
+    if (res < 0) {
+        return NULL;
+    }
+
+    if (op == Py_NE) {
+        res = !res;
+    }
+
+    if (res) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        Py_RETURN_FALSE;
+    }
+}
 
 
 static PyObject *
@@ -2441,6 +2513,7 @@ PyTypeObject PyHamt_Type = {
     .tp_dealloc = (destructor)hamt_dealloc,
     .tp_getattro = PyObject_GenericGetAttr,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_richcompare = hamt_py_richcompare,
     .tp_traverse = (traverseproc)hamt_traverse,
     .tp_clear = (inquiry)hamt_clear,
     .tp_new = hamt_tp_new,

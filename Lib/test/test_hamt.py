@@ -149,7 +149,7 @@ class HamtTest(unittest.TestCase):
                     hm = h
                     dm = d.copy()
 
-                if not (i % 100):
+                if not (i % 500):
                     self.assertEqual(set(h.items()), set(d.items()))
 
             self.assertEqual(len(d), 0)
@@ -168,7 +168,6 @@ class HamtTest(unittest.TestCase):
 
             self.assertEqual(len(d), 0)
             self.assertEqual(len(h), 0)
-
 
     def test_hamt_delete_1(self):
         A = HashKey(100, 'A')
@@ -410,8 +409,6 @@ class HamtTest(unittest.TestCase):
         h = h.set(E, 'e')
         h = h.set(F, 'f')
 
-        print(h.__dump__())
-
         it = h.items()
         self.assertEqual(
             set(list(it)),
@@ -437,6 +434,40 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(
             set(list(it)),
             {(A, 'a'), (B, 'b'), (C, 'c'), (D, 'd'), (E, 'e'), (F, 'f')})
+
+    def test_hamt_eq_1(self):
+        A = HashKey(100, 'A')
+        B = HashKey(101, 'B')
+        C = HashKey(100100, 'C')
+        D = HashKey(100100, 'D')
+
+        h1 = hamt()
+        h1 = h1.set(A, 'a')
+        h1 = h1.set(B, 'b')
+        h1 = h1.set(C, 'c')
+        h1 = h1.set(D, 'd')
+
+        h2 = hamt()
+        h2 = h2.set(A, 'a')
+
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+        h2 = h2.set(B, 'b')
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+        h2 = h2.set(C, 'c')
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+        h2 = h2.set(D, 'd2')
+        self.assertFalse(h1 == h2)
+        self.assertTrue(h1 != h2)
+
+        h2 = h2.set(D, 'd')
+        self.assertTrue(h1 == h2)
+        self.assertFalse(h1 != h2)
 
 
 if __name__ == "__main__":
