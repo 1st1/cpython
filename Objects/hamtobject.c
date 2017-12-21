@@ -1935,7 +1935,7 @@ hamt_node_dump(_PyHamtNode_BaseNode *node,
 typedef enum {I_ITEM, I_END} hamt_iter_t;
 
 
-#define HAMT_MAX_TREE_DEPTH 6
+#define HAMT_MAX_TREE_DEPTH 7
 
 
 typedef struct {
@@ -1980,6 +1980,7 @@ hamt_iterator_bitmap_next(PyHamtIteratorState *iter,
         iter->i_pos[level] = pos + 2;
 
         int8_t next_level = level + 1;
+        assert(next_level < HAMT_MAX_TREE_DEPTH);
         iter->i_level = next_level;
         iter->i_pos[next_level] = 0;
         iter->i_nodes[next_level] = (_PyHamtNode_BaseNode *)
@@ -2035,6 +2036,7 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
             iter->i_pos[level] = i + 1;
 
             int8_t next_level = level + 1;
+            assert(next_level < HAMT_MAX_TREE_DEPTH);
             iter->i_pos[next_level] = 0;
             iter->i_nodes[next_level] = node->a_array[i];
             iter->i_level = next_level;
@@ -2054,6 +2056,8 @@ hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val)
     if (iter->i_level < 0) {
         return I_END;
     }
+
+    assert(iter->i_level < HAMT_MAX_TREE_DEPTH);
 
     _PyHamtNode_BaseNode *current = iter->i_nodes[iter->i_level];
 
