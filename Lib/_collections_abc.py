@@ -688,7 +688,6 @@ class Mapping(Collection):
 
     __reversed__ = None
 
-
 Mapping.register(mappingproxy)
 
 
