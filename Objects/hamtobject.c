@@ -1909,6 +1909,12 @@ typedef struct {
 
        So for iterators, we can implement zero allocations
        and zero inc/dec ref depth-first iteration.
+
+       The state of the iteration will be stored in this struct.
+
+       - i_nodes: an array of seven pointers to tree nodes
+       - i_level: the current node in i_nodes
+       - i_pos: an array of positions within nodes in i_nodes.
     */
     _PyHamtNode_BaseNode *i_nodes[HAMT_MAX_TREE_DEPTH];
     Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
