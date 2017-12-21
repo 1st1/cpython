@@ -719,26 +719,22 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
             shift + 5, hash, key, &sub_node);
 
         switch (res) {
-            case W_EMPTY: {
-                assert(sub_node == NULL);
+            case W_EMPTY:
+                /* It's impossible for us to receive a W_EMPTY here:
 
-                if (hamt_node_bitmap_count(self) == 1) {
-                    /* We have one child node, and that child node needs
-                       to be removed.  This means this node would become
-                       an empty node, so just return W_EMPTY.
-                    */
-                    return W_EMPTY;
-                }
+                    - Array nodes are converted to Bitmap nodes when
+                      we delete 16th item from them;
 
-                *new_node = (_PyHamtNode_BaseNode *)
-                    hamt_node_bitmap_clone_without(self, bit);  /* borrow */
-                if (*new_node == NULL) {
-                    return W_ERROR;
-                }
-                else {
-                    return W_NEWNODE;
-                }
-            }
+                    - Collision nodes are converted to Bitmap when
+                      there is one item in them;
+
+                    - Bitmap node's without() inlines single-item
+                      sub-nodes.
+
+                   So in no situation we can have a single-item
+                   Bitmap child of another Bitmap node.
+                 */
+                abort();
 
             case W_NEWNODE: {
                 assert(sub_node != NULL);
