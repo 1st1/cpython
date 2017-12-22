@@ -90,7 +90,7 @@ context_tp_iter(PyContext *self)
 static PyObject *
 context_tp_richcompare(PyObject *v, PyObject *w, int op)
 {
-    if (!PyContext_Check(v) || !PyContext_Check(w) ||
+    if (!PyContext_CheckExact(v) || !PyContext_CheckExact(w) ||
             (op != Py_EQ && op != Py_NE))
     {
         Py_RETURN_NOTIMPLEMENTED;
@@ -205,6 +205,177 @@ PyTypeObject PyContext_Type = {
     .tp_new = context_tp_new,
     .tp_weaklistoffset = offsetof(PyContext, ctx_weakreflist),
     .tp_hash = PyObject_HashNotImplemented,
+};
+
+
+/////////////////////////// ContextVar
+
+
+static Py_hash_t
+contextvar_new_hash(void *addr, PyObject *name)
+{
+    /* Take hash of the name and XOR it with the default object hash.
+       We do this to ensure that even sequentially allocated ContextVar
+       objects have drastically different hashes.
+    */
+
+    Py_hash_t name_hash = PyObject_Hash(name);
+    if (name_hash == -1) {
+        return -1;
+    }
+
+    Py_hash_t addr_hash = _Py_HashPointer(addr);
+    Py_hash_t res;
+
+    res = (addr_hash ^ name_hash);
+    return res == -1 ? -2 : res;
+}
+
+static PyObject *
+contextvar_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    static char *kwlist[] = {"", "default", NULL};
+    PyObject *name;
+    PyObject *def = NULL;
+
+    if (!PyArg_ParseTupleAndKeywords(
+            args, kwds, "O|$O:ContextVar", kwlist, &name, &def))
+    {
+        return NULL;
+    }
+
+    if (!PyUnicode_Check(name)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "context variable name must be a str");
+        return NULL;
+    }
+
+    PyContextVar *o = PyObject_GC_New(PyContextVar, &PyContextVar_Type);
+    if (o == NULL) {
+        return NULL;
+    }
+
+    o->var_hash = contextvar_new_hash(o, name);
+    if (o->var_hash == -1) {
+        Py_DECREF(o);
+        return NULL;
+    }
+
+    Py_INCREF(name);
+    o->var_name = name;
+
+    Py_XINCREF(def);
+    o->var_default = def;
+
+    PyObject_GC_Track(o);
+    return (PyObject*)o;
+}
+
+static int
+contextvar_tp_clear(PyContextVar *self)
+{
+    Py_CLEAR(self->var_name);
+    Py_CLEAR(self->var_default);
+    return 0;
+}
+
+static int
+contextvar_tp_traverse(PyContextVar *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->var_name);
+    Py_VISIT(self->var_default);
+    return 0;
+}
+
+static void
+contextvar_tp_dealloc(PyContextVar *self)
+{
+    PyObject_GC_UnTrack(self);
+    (void)contextvar_tp_clear(self);
+    Py_TYPE(self)->tp_free(self);
+}
+
+static Py_hash_t
+contextvar_tp_hash(PyContextVar *self)
+{
+    return self->var_hash;
+}
+
+static PyObject *
+contextvar_tp_repr(PyContextVar *self)
+{
+    _PyUnicodeWriter writer;
+
+    _PyUnicodeWriter_Init(&writer);
+    writer.min_length = 33;  /* len of "<ContextVar name= at 0x10b0cd0f0>" */
+
+    if (_PyUnicodeWriter_WriteASCIIString(
+            &writer, "<ContextVar name=", 17) < 0)
+    {
+        goto error;
+    }
+
+    PyObject *name = PyObject_Repr(self->var_name);
+    if (name == NULL) {
+        goto error;
+    }
+    if (_PyUnicodeWriter_WriteStr(&writer, name) < 0) {
+        Py_DECREF(name);
+        goto error;
+    }
+    Py_DECREF(name);
+
+    if (self->var_default != NULL) {
+        if (_PyUnicodeWriter_WriteASCIIString(&writer, " default=", 9) < 0) {
+            goto error;
+        }
+
+        PyObject *def = PyObject_Repr(self->var_default);
+        if (def == NULL) {
+            goto error;
+        }
+        if (_PyUnicodeWriter_WriteStr(&writer, def) < 0) {
+            Py_DECREF(def);
+            goto error;
+        }
+        Py_DECREF(def);
+    }
+
+    PyObject *addr = PyUnicode_FromFormat(" at %p>", self);
+    if (addr == NULL) {
+        goto error;
+    }
+    if (_PyUnicodeWriter_WriteStr(&writer, addr) < 0) {
+        Py_DECREF(addr);
+        goto error;
+    }
+    Py_DECREF(addr);
+
+    return _PyUnicodeWriter_Finish(&writer);
+
+error:
+    _PyUnicodeWriter_Dealloc(&writer);
+    return NULL;
+}
+
+static PyMethodDef PyContextVar_methods[] = {
+    {NULL, NULL}
+};
+
+PyTypeObject PyContextVar_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    "ContextVar",
+    sizeof(PyContextVar),
+    .tp_methods = PyContextVar_methods,
+    .tp_dealloc = (destructor)contextvar_tp_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)contextvar_tp_traverse,
+    .tp_clear = (inquiry)contextvar_tp_clear,
+    .tp_new = contextvar_tp_new,
+    .tp_free = PyObject_GC_Del,
+    .tp_hash = (hashfunc)contextvar_tp_hash,
+    .tp_repr = (reprfunc)contextvar_tp_repr,
 };
 
 
