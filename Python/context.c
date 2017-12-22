@@ -60,6 +60,15 @@ module _contextvars
 static PyContext *
 context_new(PyHamtObject *vars);
 
+static PyContextToken *
+token_new(PyContextVar *var, PyObject *val);
+
+static int
+contextvar_set(PyContextVar *var, PyObject *val);
+
+static int
+contextvar_del(PyContextVar *var);
+
 
 PyObject *
 _PyContext_NewHamtForTests(void)
@@ -128,16 +137,17 @@ not_found:
     }
 }
 
-PyObject *
+
+PyContextToken *
 PyContextVar_Set(PyContextVar *var, PyObject *val)
 {
-    PyThreadState *ts = PyThreadState_Get();
-
     if (!PyContextVar_CheckExact(var)) {
         PyErr_SetString(
             PyExc_TypeError, "an instance of ContextVar was expected");
         return NULL;
     }
+
+    PyThreadState *ts = PyThreadState_Get();
 
     if (ts->contextvars == NULL) {
         ts->contextvars = (PyObject *)hamt_new();
@@ -149,14 +159,45 @@ PyContextVar_Set(PyContextVar *var, PyObject *val)
     assert(PyHamt_Check(ts->contextvars));
     PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
 
-    PyHamtObject *new_vars = hamt_assoc(vars, (PyObject*)var, val);
-    if (new_vars == NULL) {
+    PyObject *old_val = NULL;
+    hamt_find_t found = hamt_find(vars, (PyObject *)var, &old_val);
+    if (found == F_ERROR) {
         return NULL;
     }
 
-    ts->contextvars = (PyObject *)new_vars;
-    Py_DECREF(vars);
-    Py_RETURN_NONE;
+    Py_XINCREF(old_val);
+    PyContextToken *tok = token_new(var, old_val);
+    Py_XDECREF(old_val);
+
+    if (contextvar_set(var, val)) {
+        Py_DECREF(tok);
+        return NULL;
+    }
+
+    return tok;
+}
+
+
+int
+PyContextVar_Reset(PyContextVar *var, PyContextToken *tok)
+{
+    if (var != tok->tok_var) {
+        PyErr_SetString(PyExc_ValueError,
+                        "Token was created by a different ContextVar");
+        return -1;
+    }
+
+    if (tok->tok_used) {
+        return 0;
+    }
+    tok->tok_used = 1;
+
+    if (tok->tok_oldval == NULL) {
+        return contextvar_del(var);
+    }
+    else {
+        return contextvar_set(var, tok->tok_oldval);
+    }
 }
 
 
@@ -431,6 +472,66 @@ PyTypeObject PyContext_Type = {
 /////////////////////////// ContextVar
 
 
+static int
+contextvar_set(PyContextVar *var, PyObject *val)
+{
+    PyThreadState *ts = PyThreadState_Get();
+
+    if (ts->contextvars == NULL) {
+        ts->contextvars = (PyObject *)hamt_new();
+        if (ts->contextvars == NULL) {
+            return -1;
+        }
+    }
+
+    assert(PyHamt_Check(ts->contextvars));
+    PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
+
+    PyHamtObject *new_vars = hamt_assoc(vars, (PyObject *)var, val);
+    if (new_vars == NULL) {
+        return -1;
+    }
+
+    ts->contextvars = (PyObject *)new_vars;
+    Py_DECREF(vars);
+    return 0;
+}
+
+static int
+contextvar_del(PyContextVar *var)
+{
+    PyThreadState *ts = PyThreadState_Get();
+
+    if (ts->contextvars == NULL) {
+        return 0;
+    }
+
+    assert(PyHamt_Check(ts->contextvars));
+    PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
+
+    PyHamtObject *new_vars = hamt_without(vars, (PyObject *)var);
+    if (new_vars == NULL) {
+        return -1;
+    }
+
+    if (vars == new_vars) {
+        Py_DECREF(new_vars);
+        PyErr_SetObject(PyExc_LookupError, (PyObject *)var);
+        return -1;
+    }
+
+    ts->contextvars = (PyObject *)new_vars;
+    Py_DECREF(vars);
+    return 0;
+}
+
+
+/*[clinic input]
+class _contextvars.ContextVar "PyContextVar *" "&PyContextVar_Type"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=445da935fa8883c3]*/
+
+
 static Py_hash_t
 contextvar_generate_hash(void *addr, PyObject *name)
 {
@@ -586,25 +687,61 @@ error:
     return NULL;
 }
 
+
+/*[clinic input]
+_contextvars.ContextVar.get
+    default: object = NULL
+    /
+[clinic start generated code]*/
+
 static PyObject *
-contextvar_get(PyContextVar *self, PyObject *args)
+_contextvars_ContextVar_get_impl(PyContextVar *self, PyObject *default_value)
+/*[clinic end generated code: output=0746bd0aa2ced7bf input=8d002b02eebbb247]*/
 {
-    PyObject *def = NULL;
-    if (!PyArg_UnpackTuple(args, "get", 0, 1, &def)) {
+    return PyContextVar_Get(self, default_value);
+}
+
+/*[clinic input]
+_contextvars.ContextVar.set
+    value: object
+    /
+[clinic start generated code]*/
+
+static PyObject *
+_contextvars_ContextVar_set(PyContextVar *self, PyObject *value)
+/*[clinic end generated code: output=446ed5e820d6d60b input=a2d88f57c6d86f7c]*/
+{
+    return (PyObject *)PyContextVar_Set(self, value);
+}
+
+/*[clinic input]
+_contextvars.ContextVar.reset
+    token: object
+    /
+[clinic start generated code]*/
+
+static PyObject *
+_contextvars_ContextVar_reset(PyContextVar *self, PyObject *token)
+/*[clinic end generated code: output=d4ee34d0742d62ee input=4c871b6f1f31a65f]*/
+{
+    if (!PyContextToken_CheckExact(token)) {
+        PyErr_Format(PyExc_TypeError,
+                     "expected an instance of Token, got %R", token);
         return NULL;
     }
-    return PyContextVar_Get(self, def);
+
+    if (PyContextVar_Reset(self, (PyContextToken *)token)) {
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
 }
 
-static PyObject *
-contextvar_set(PyContextVar *self, PyObject *val)
-{
-    return PyContextVar_Set(self, val);
-}
 
 static PyMethodDef PyContextVar_methods[] = {
-    {"get", (PyCFunction)contextvar_get, METH_VARARGS, NULL},
-    {"set", (PyCFunction)contextvar_set, METH_O, NULL},
+    _CONTEXTVARS_CONTEXTVAR_GET_METHODDEF
+    _CONTEXTVARS_CONTEXTVAR_SET_METHODDEF
+    _CONTEXTVARS_CONTEXTVAR_RESET_METHODDEF
     {NULL, NULL}
 };
 
@@ -623,6 +760,87 @@ PyTypeObject PyContextVar_Type = {
     .tp_hash = (hashfunc)contextvar_tp_hash,
     .tp_repr = (reprfunc)contextvar_tp_repr,
 };
+
+
+/////////////////////////// Token
+
+
+/*[clinic input]
+class _contextvars.Token "PyContextToken *" "&PyContextToken_Type"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=338a5e2db13d3f5b]*/
+
+
+static PyObject *
+token_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyErr_SetString(PyExc_RuntimeError,
+                    "Tokens can only be created by ContextVars");
+    return NULL;
+}
+
+static int
+token_tp_clear(PyContextToken *self)
+{
+    Py_CLEAR(self->tok_var);
+    Py_CLEAR(self->tok_oldval);
+    return 0;
+}
+
+static int
+token_tp_traverse(PyContextToken *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->tok_var);
+    Py_VISIT(self->tok_oldval);
+    return 0;
+}
+
+static void
+token_tp_dealloc(PyContextToken *self)
+{
+    PyObject_GC_UnTrack(self);
+    (void)token_tp_clear(self);
+    Py_TYPE(self)->tp_free(self);
+}
+
+static PyMethodDef PyContextToken_methods[] = {
+    {NULL, NULL}
+};
+
+PyTypeObject PyContextToken_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    "Token",
+    sizeof(PyContextToken),
+    .tp_methods = PyContextToken_methods,
+    .tp_dealloc = (destructor)token_tp_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_traverse = (traverseproc)token_tp_traverse,
+    .tp_clear = (inquiry)token_tp_clear,
+    .tp_new = token_tp_new,
+    .tp_free = PyObject_GC_Del,
+    .tp_hash = PyObject_HashNotImplemented,
+};
+
+static PyContextToken *
+token_new(PyContextVar *var, PyObject *val)
+{
+    PyContextToken *tok = PyObject_GC_New(PyContextToken, &PyContextToken_Type);
+    if (tok == NULL) {
+        return NULL;
+    }
+
+    Py_INCREF(var);
+    tok->tok_var = var;
+
+    Py_XINCREF(val);
+    tok->tok_oldval = val;
+
+    tok->tok_used = 0;
+
+    PyObject_GC_Track(tok);
+    return tok;
+}
 
 
 /////////////////////////// HAMT DATASTRUCTURE IMPLEMENTATION

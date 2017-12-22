@@ -82,4 +82,48 @@ _contextvars_Context_values(PyContext *self, PyObject *Py_UNUSED(ignored))
 {
     return _contextvars_Context_values_impl(self);
 }
-/*[clinic end generated code: output=67ec406975da0e53 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_contextvars_ContextVar_get__doc__,
+"get($self, default=None, /)\n"
+"--\n"
+"\n");
+
+#define _CONTEXTVARS_CONTEXTVAR_GET_METHODDEF    \
+    {"get", (PyCFunction)_contextvars_ContextVar_get, METH_FASTCALL, _contextvars_ContextVar_get__doc__},
+
+static PyObject *
+_contextvars_ContextVar_get_impl(PyContextVar *self, PyObject *default_value);
+
+static PyObject *
+_contextvars_ContextVar_get(PyContextVar *self, PyObject *const *args, Py_ssize_t nargs)
+{
+    PyObject *return_value = NULL;
+    PyObject *default_value = NULL;
+
+    if (!_PyArg_UnpackStack(args, nargs, "get",
+        0, 1,
+        &default_value)) {
+        goto exit;
+    }
+    return_value = _contextvars_ContextVar_get_impl(self, default_value);
+
+exit:
+    return return_value;
+}
+
+PyDoc_STRVAR(_contextvars_ContextVar_set__doc__,
+"set($self, value, /)\n"
+"--\n"
+"\n");
+
+#define _CONTEXTVARS_CONTEXTVAR_SET_METHODDEF    \
+    {"set", (PyCFunction)_contextvars_ContextVar_set, METH_O, _contextvars_ContextVar_set__doc__},
+
+PyDoc_STRVAR(_contextvars_ContextVar_reset__doc__,
+"reset($self, token, /)\n"
+"--\n"
+"\n");
+
+#define _CONTEXTVARS_CONTEXTVAR_RESET_METHODDEF    \
+    {"reset", (PyCFunction)_contextvars_ContextVar_reset, METH_O, _contextvars_ContextVar_reset__doc__},
+/*[clinic end generated code: output=7a5fb14b7e372b5c input=a9049054013a1b77]*/

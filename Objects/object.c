@@ -1819,8 +1819,12 @@ _Py_ReadyTypes(void)
         Py_FatalError("Can't initialize hamt types");
     }
 
-    if (PyType_Ready(&PyContext_Type) < 0)
-        Py_FatalError("Can't initialize Context type");
+    if ((PyType_Ready(&PyContext_Type) < 0) ||
+        (PyType_Ready(&PyContextVar_Type) < 0) ||
+        (PyType_Ready(&PyContextToken_Type) < 0))
+    {
+        Py_FatalError("Can't initialize Context types");
+    }
 
 }
 

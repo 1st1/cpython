@@ -161,13 +161,25 @@ class ContextTest(unittest.TestCase):
 
         self.assertIsNone(c.get(None))
 
-        c.set(42)
+        t0 = c.set(42)
         self.assertEqual(c.get(), 42)
         self.assertEqual(c.get(None), 42)
 
-        c.set('spam')
+        t = c.set('spam')
         self.assertEqual(c.get(), 'spam')
         self.assertEqual(c.get(None), 'spam')
+        c.reset(t)
+
+        self.assertEqual(c.get(), 42)
+        self.assertEqual(c.get(None), 42)
+
+        c.set('spam2')
+        c.reset(t)  # This should be a nop
+        self.assertEqual(c.get(), 'spam2')
+
+        c.reset(t0)
+        c.reset(t0)
+        self.assertIsNone(c.get(None))
 
 
 # HAMT Tests
