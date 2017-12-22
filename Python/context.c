@@ -204,6 +204,7 @@ PyTypeObject PyContext_Type = {
     .tp_clear = (inquiry)context_tp_clear,
     .tp_new = context_tp_new,
     .tp_weaklistoffset = offsetof(PyContext, ctx_weakreflist),
+    .tp_hash = PyObject_HashNotImplemented,
 };
 
 
@@ -2866,6 +2867,7 @@ PyTypeObject _PyHamt_Type = {
     .tp_clear = (inquiry)hamt_tp_clear,
     .tp_new = hamt_tp_new,
     .tp_weaklistoffset = offsetof(PyHamtObject, h_weakreflist),
+    .tp_hash = PyObject_HashNotImplemented,
 };
 
 
@@ -2882,6 +2884,7 @@ PyTypeObject _PyHamt_ArrayNode_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .tp_traverse = (traverseproc)hamt_node_array_traverse,
     .tp_free = PyObject_GC_Del,
+    .tp_hash = PyObject_HashNotImplemented,
 };
 
 PyTypeObject _PyHamt_BitmapNode_Type = {
@@ -2894,6 +2897,7 @@ PyTypeObject _PyHamt_BitmapNode_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .tp_traverse = (traverseproc)hamt_node_bitmap_traverse,
     .tp_free = PyObject_GC_Del,
+    .tp_hash = PyObject_HashNotImplemented,
 };
 
 PyTypeObject _PyHamt_CollisionNode_Type = {
@@ -2906,4 +2910,5 @@ PyTypeObject _PyHamt_CollisionNode_Type = {
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
     .tp_traverse = (traverseproc)hamt_node_collision_traverse,
     .tp_free = PyObject_GC_Del,
+    .tp_hash = PyObject_HashNotImplemented,
 };
