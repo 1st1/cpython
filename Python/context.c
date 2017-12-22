@@ -91,7 +91,50 @@ PyContext *
 PyContext_Get(void)
 {
     PyThreadState *ts = PyThreadState_Get();
-    return context_new((PyHamtObject*)ts->contextvars);
+    return context_new((PyHamtObject *)ts->contextvars);
+}
+
+
+int
+PyContext_Enter(PyContext *ctx)
+{
+    if (ctx->ctx_prev_set) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "cannot enter: Context %R was already "
+                     "entered before, but not exited", ctx);
+        return -1;
+    }
+
+    PyThreadState *ts = PyThreadState_Get();
+    ctx->ctx_prev = (PyHamtObject *)ts->contextvars;  /* borrow */
+    ctx->ctx_prev_set = 1;
+
+    Py_INCREF(ctx->ctx_vars);
+    ts->contextvars = (PyObject *)ctx->ctx_vars;
+
+    return 0;
+}
+
+
+int
+PyContext_Exit(PyContext *ctx)
+{
+    if (!ctx->ctx_prev_set) {
+        PyErr_Format(PyExc_RuntimeError,
+                     "cannot exit: Context %R was not entered before", ctx);
+        return -1;
+    }
+
+    PyThreadState *ts = PyThreadState_Get();
+
+    Py_DECREF(ctx->ctx_vars);
+    ctx->ctx_vars = (PyHamtObject *)ts->contextvars;
+
+    ts->contextvars = (PyObject *)ctx->ctx_prev;  /* borrow */
+    ctx->ctx_prev = NULL;
+    ctx->ctx_prev_set = 0;
+
+    return 0;
 }
 
 
@@ -218,6 +261,7 @@ class _contextvars.Context "PyContext *" "&PyContext_Type"
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdf87f8e0cb580e8]*/
 
+
 static PyContext *
 context_new(PyHamtObject *vars)
 {
@@ -238,6 +282,9 @@ context_new(PyHamtObject *vars)
         Py_INCREF(vars);
         ctx->ctx_vars = vars;
     }
+
+    ctx->ctx_prev = NULL;
+    ctx->ctx_prev_set = 0;
 
     ctx->ctx_weakreflist = NULL;
     PyObject_GC_Track(ctx);
@@ -270,6 +317,7 @@ context_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 context_tp_clear(PyContext *self)
 {
+    Py_CLEAR(self->ctx_prev);
     Py_CLEAR(self->ctx_vars);
     return 0;
 }
@@ -277,6 +325,7 @@ context_tp_clear(PyContext *self)
 static int
 context_tp_traverse(PyContext *self, visitproc visit, void *arg)
 {
+    Py_VISIT(self->ctx_prev);
     Py_VISIT(self->ctx_vars);
     return 0;
 }
@@ -408,25 +457,22 @@ static PyObject *
 context_run(PyContext *self, PyObject *const *args,
             Py_ssize_t nargs, PyObject *kwnames)
 {
-    PyThreadState *ts = PyThreadState_Get();
-
     if (nargs < 1) {
         PyErr_SetString(PyExc_TypeError,
                         "run() missing 1 required positional argument");
         return NULL;
     }
 
-    PyObject *old_ctx = ts->contextvars;
-
-    Py_INCREF(self->ctx_vars);
-    ts->contextvars = (PyObject *)self->ctx_vars;
+    if (PyContext_Enter(self)) {
+        return NULL;
+    }
 
     PyObject *call_result = _PyObject_FastCallKeywords(
         args[0], args + 1, nargs - 1, kwnames);
 
-    Py_DECREF(self->ctx_vars);
-    self->ctx_vars = (PyHamtObject *)ts->contextvars;
-    ts->contextvars = old_ctx;
+    if (PyContext_Exit(self)) {
+        return NULL;
+    }
 
     return call_result;
 }

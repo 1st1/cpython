@@ -25,6 +25,9 @@ typedef struct _pycontexttokenobject PyContextToken;
 PyAPI_FUNC(PyContext *) PyContext_New(void);
 PyAPI_FUNC(PyContext *) PyContext_Get(void);
 
+PyAPI_FUNC(int) PyContext_Enter(PyContext *);
+PyAPI_FUNC(int) PyContext_Exit(PyContext *);
+
 
 PyAPI_FUNC(PyContextVar *) PyContextVar_New(PyObject *, PyObject *);
 PyAPI_FUNC(PyObject *) PyContextVar_Get(PyContextVar *, PyObject *);
