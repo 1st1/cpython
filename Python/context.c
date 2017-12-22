@@ -5,28 +5,23 @@
 #include "internal/context.h"
 
 
-typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
-typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
-typedef enum {I_ITEM, I_END} hamt_iter_t;
-
-
 static PyHamtObject *
 hamt_new(void);
-
-static PyHamtObject *
-hamt_assoc(PyHamtObject *o, PyObject *key, PyObject *val);
-
-static PyHamtObject *
-hamt_without(PyHamtObject *o, PyObject *key);
-
-static hamt_find_t
-hamt_find(PyHamtObject *o, PyObject *key, PyObject **val);
 
 static int
 hamt_eq(PyHamtObject *v, PyHamtObject *w);
 
 static Py_ssize_t
 hamt_len(PyHamtObject *o);
+
+static int
+hamt_contains(PyHamtObject *self, PyObject *key);
+
+static PyObject *
+hamt_subscript(PyHamtObject *self, PyObject *key);
+
+static PyObject *
+hamt_get(PyHamtObject *self, PyObject *key, PyObject *def);
 
 static PyObject *
 hamt_iter_new_keys(PyHamtObject *o);
@@ -38,6 +33,183 @@ static PyObject *
 hamt_iter_new_items(PyHamtObject *o);
 
 
+/////////////////////////// PyContext
+
+
+static PyObject *
+context_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    PyContext *o = PyObject_GC_New(PyContext, &PyContext_Type);
+    if (o == NULL) {
+        return NULL;
+    }
+
+    o->ctx_vars = hamt_new();
+    if (o->ctx_vars == NULL) {
+        Py_DECREF(o);
+        return NULL;
+    }
+
+    o->ctx_weakreflist = NULL;
+    PyObject_GC_Track(o);
+    return (PyObject*)o;
+}
+
+
+static int
+context_tp_clear(PyContext *self)
+{
+    Py_CLEAR(self->ctx_vars);
+    return 0;
+}
+
+static int
+context_tp_traverse(PyContext *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->ctx_vars);
+    return 0;
+}
+
+static void
+context_tp_dealloc(PyContext *self)
+{
+    PyObject_GC_UnTrack(self);
+    if (self->ctx_weakreflist != NULL) {
+        PyObject_ClearWeakRefs((PyObject*)self);
+    }
+    (void)context_tp_clear(self);
+    Py_TYPE(self)->tp_free(self);
+}
+
+static PyObject *
+context_tp_iter(PyContext *self)
+{
+    return hamt_iter_new_keys(self->ctx_vars);
+}
+
+static PyObject *
+context_tp_richcompare(PyObject *v, PyObject *w, int op)
+{
+    if (!PyContext_Check(v) || !PyContext_Check(w) ||
+            (op != Py_EQ && op != Py_NE))
+    {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    int res = hamt_eq(((PyContext *)v)->ctx_vars, ((PyContext *)w)->ctx_vars);
+    if (res < 0) {
+        return NULL;
+    }
+
+    if (op == Py_NE) {
+        res = !res;
+    }
+
+    if (res) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        Py_RETURN_FALSE;
+    }
+}
+
+static Py_ssize_t
+context_tp_len(PyContext *self)
+{
+    return hamt_len(self->ctx_vars);
+}
+
+static PyObject *
+context_tp_subscript(PyContext *self, PyObject *key)
+{
+    return hamt_subscript(self->ctx_vars, key);
+}
+
+static int
+context_tp_contains(PyContext *self, PyObject *key)
+{
+    return hamt_contains(self->ctx_vars, key);
+}
+
+static PyObject *
+context_get(PyContext *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *def = NULL;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
+        return NULL;
+    }
+
+    return hamt_get(self->ctx_vars, key, def);
+}
+
+static PyObject *
+context_items(PyContext *self, PyObject *args)
+{
+    return hamt_iter_new_items(self->ctx_vars);
+}
+
+static PyObject *
+context_keys(PyContext *self, PyObject *args)
+{
+    return hamt_iter_new_keys(self->ctx_vars);
+}
+
+static PyObject *
+context_values(PyContext *self, PyObject *args)
+{
+    return hamt_iter_new_keys(self->ctx_vars);
+}
+
+static PyMethodDef PyContext_methods[] = {
+    {"get", (PyCFunction)context_get, METH_VARARGS, NULL},
+    {"items", (PyCFunction)context_items, METH_NOARGS, NULL},
+    {"keys", (PyCFunction)context_keys, METH_NOARGS, NULL},
+    {"values", (PyCFunction)context_values, METH_NOARGS, NULL},
+    {NULL, NULL}
+};
+
+static PySequenceMethods PyContext_as_sequence = {
+    0,                                   /* sq_length */
+    0,                                   /* sq_concat */
+    0,                                   /* sq_repeat */
+    0,                                   /* sq_item */
+    0,                                   /* sq_slice */
+    0,                                   /* sq_ass_item */
+    0,                                   /* sq_ass_slice */
+    (objobjproc)context_tp_contains,     /* sq_contains */
+    0,                                   /* sq_inplace_concat */
+    0,                                   /* sq_inplace_repeat */
+};
+
+static PyMappingMethods PyContext_as_mapping = {
+    (lenfunc)context_tp_len,             /* mp_length */
+    (binaryfunc)context_tp_subscript,    /* mp_subscript */
+};
+
+PyTypeObject PyContext_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    "Context",
+    sizeof(PyContext),
+    .tp_methods = PyContext_methods,
+    .tp_as_mapping = &PyContext_as_mapping,
+    .tp_as_sequence = &PyContext_as_sequence,
+    .tp_iter = (getiterfunc)context_tp_iter,
+    .tp_dealloc = (destructor)context_tp_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_richcompare = context_tp_richcompare,
+    .tp_traverse = (traverseproc)context_tp_traverse,
+    .tp_clear = (inquiry)context_tp_clear,
+    .tp_new = context_tp_new,
+    .tp_weaklistoffset = offsetof(PyContext, ctx_weakreflist),
+};
+
+
+/////////////////////////// APIs
+
+
 PyObject *
 _PyContext_NewHamtForTests(void)
 {
@@ -46,6 +218,11 @@ _PyContext_NewHamtForTests(void)
 
 
 /////////////////////////// HAMT DATASTRUCTURE IMPLEMENTATION
+
+
+typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
+typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
+typedef enum {I_ITEM, I_END} hamt_iter_t;
 
 
 #define IS_ARRAY_NODE(node)     (Py_TYPE(node) == &_PyHamt_ArrayNode_Type)
@@ -2221,6 +2398,58 @@ hamt_len(PyHamtObject *o)
     return o->h_count;
 }
 
+static int
+hamt_contains(PyHamtObject *self, PyObject *key)
+{
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return -1;
+        case F_FOUND:
+            return 1;
+        case F_NOT_FOUND:
+            return 0;
+    }
+}
+
+static PyObject *
+hamt_subscript(PyHamtObject *self, PyObject *key)
+{
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            PyErr_SetObject(PyExc_KeyError, key);
+            return NULL;
+    }
+}
+
+static PyObject *
+hamt_get(PyHamtObject *self, PyObject *key, PyObject *def)
+{
+    PyObject *val = NULL;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            if (def == NULL) {
+                Py_RETURN_NONE;
+            }
+            Py_INCREF(def);
+            return def;
+    }
+}
+
 static PyHamtObject *
 hamt_alloc(void)
 {
@@ -2281,29 +2510,29 @@ error:
 
 
 static int
-PyHamtIterator_slot_clear(PyHamtIterator *it)
+hamt_baseiter_tp_clear(PyHamtIterator *it)
 {
     Py_CLEAR(it->hi_obj);
     return 0;
 }
 
 static void
-PyHamtIterator_slot_dealloc(PyHamtIterator *it)
+hamt_baseiter_tp_dealloc(PyHamtIterator *it)
 {
     PyObject_GC_UnTrack(it);
-    (void)PyHamtIterator_slot_clear(it);
+    (void)hamt_baseiter_tp_clear(it);
     PyObject_GC_Del(it);
 }
 
 static int
-PyHamtIterator_slot_traverse(PyHamtIterator *it, visitproc visit, void *arg)
+hamt_baseiter_tp_traverse(PyHamtIterator *it, visitproc visit, void *arg)
 {
     Py_VISIT(it->hi_obj);
     return 0;
 }
 
 static PyObject *
-PyHamtIterator_slot_iternext(PyHamtIterator *it)
+hamt_baseiter_tp_iternext(PyHamtIterator *it)
 {
     PyObject *key;
     PyObject *val;
@@ -2321,17 +2550,17 @@ PyHamtIterator_slot_iternext(PyHamtIterator *it)
 }
 
 static Py_ssize_t
-PyHamtIterator_slot_len(PyHamtIterator *it)
+hamt_baseiter_tp_len(PyHamtIterator *it)
 {
     return it->hi_obj->h_count;
 }
 
 static PyMappingMethods PyHamtIterator_as_mapping = {
-    (lenfunc)PyHamtIterator_slot_len,
+    (lenfunc)hamt_baseiter_tp_len,
 };
 
 static PyObject *
-hamt_new_PyHamtIterator(PyTypeObject *type, binaryfunc yield, PyHamtObject *o)
+hamt_baseiter_new(PyTypeObject *type, binaryfunc yield, PyHamtObject *o)
 {
     PyHamtIterator *it = PyObject_GC_New(PyHamtIterator, type);
     if (it == NULL) {
@@ -2351,13 +2580,13 @@ hamt_new_PyHamtIterator(PyTypeObject *type, binaryfunc yield, PyHamtObject *o)
     .tp_basicsize = sizeof(PyHamtIterator),                     \
     .tp_itemsize = 0,                                           \
     .tp_as_mapping = &PyHamtIterator_as_mapping,                \
-    .tp_dealloc = (destructor)PyHamtIterator_slot_dealloc,      \
+    .tp_dealloc = (destructor)hamt_baseiter_tp_dealloc,         \
     .tp_getattro = PyObject_GenericGetAttr,                     \
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,        \
-    .tp_traverse = (traverseproc)PyHamtIterator_slot_traverse,  \
-    .tp_clear = (inquiry)PyHamtIterator_slot_clear,             \
+    .tp_traverse = (traverseproc)hamt_baseiter_tp_traverse,     \
+    .tp_clear = (inquiry)hamt_baseiter_tp_clear,                \
     .tp_iter = PyObject_SelfIter,                               \
-    .tp_iternext = (iternextfunc)PyHamtIterator_slot_iternext,
+    .tp_iternext = (iternextfunc)hamt_baseiter_tp_iternext,
 
 
 /////////////////////////////////// _PyHamtItems_Type
@@ -2388,7 +2617,7 @@ hamt_iter_yield_items(PyObject *key, PyObject *val)
 static PyObject *
 hamt_iter_new_items(PyHamtObject *o)
 {
-    return hamt_new_PyHamtIterator(
+    return hamt_baseiter_new(
         &_PyHamtItems_Type, hamt_iter_yield_items, o);
 }
 
@@ -2412,7 +2641,7 @@ hamt_iter_yield_keys(PyObject *key, PyObject *val)
 static PyObject *
 hamt_iter_new_keys(PyHamtObject *o)
 {
-    return hamt_new_PyHamtIterator(
+    return hamt_baseiter_new(
         &_PyHamtKeys_Type, hamt_iter_yield_keys, o);
 }
 
@@ -2436,7 +2665,7 @@ hamt_iter_yield_values(PyObject *key, PyObject *val)
 static PyObject *
 hamt_iter_new_values(PyHamtObject *o)
 {
-    return hamt_new_PyHamtIterator(
+    return hamt_baseiter_new(
         &_PyHamtValues_Type, hamt_iter_yield_values, o);
 }
 
@@ -2451,13 +2680,13 @@ hamt_dump(PyHamtObject *self);
 
 
 static PyObject *
-hamt_slot_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+hamt_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     return (PyObject*)hamt_new();
 }
 
 static int
-hamt_slot_clear(PyHamtObject *self)
+hamt_tp_clear(PyHamtObject *self)
 {
     Py_CLEAR(self->h_root);
     return 0;
@@ -2465,26 +2694,26 @@ hamt_slot_clear(PyHamtObject *self)
 
 
 static int
-hamt_slot_traverse(PyHamtObject *self, visitproc visit, void *arg)
+hamt_tp_traverse(PyHamtObject *self, visitproc visit, void *arg)
 {
     Py_VISIT(self->h_root);
     return 0;
 }
 
 static void
-hamt_slot_dealloc(PyHamtObject *self)
+hamt_tp_dealloc(PyHamtObject *self)
 {
     PyObject_GC_UnTrack(self);
     if (self->h_weakreflist != NULL) {
         PyObject_ClearWeakRefs((PyObject*)self);
     }
-    (void)hamt_slot_clear(self);
+    (void)hamt_tp_clear(self);
     Py_TYPE(self)->tp_free(self);
 }
 
 
 static PyObject *
-hamt_slot_richcompare(PyObject *v, PyObject *w, int op)
+hamt_tp_richcompare(PyObject *v, PyObject *w, int op)
 {
     if (!PyHamt_Check(v) || !PyHamt_Check(w) || (op != Py_EQ && op != Py_NE)) {
         Py_RETURN_NOTIMPLEMENTED;
@@ -2508,45 +2737,25 @@ hamt_slot_richcompare(PyObject *v, PyObject *w, int op)
 }
 
 static int
-hamt_slot_contains(PyHamtObject *self, PyObject *key)
+hamt_tp_contains(PyHamtObject *self, PyObject *key)
 {
-    PyObject *val;
-    hamt_find_t res = hamt_find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return -1;
-        case F_FOUND:
-            return 1;
-        case F_NOT_FOUND:
-            return 0;
-    }
+    return hamt_contains(self, key);
 }
 
 static PyObject *
-hamt_slot_subscript(PyHamtObject *self, PyObject *key)
+hamt_tp_subscript(PyHamtObject *self, PyObject *key)
 {
-    PyObject *val;
-    hamt_find_t res = hamt_find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            PyErr_SetObject(PyExc_KeyError, key);
-            return NULL;
-    }
+    return hamt_subscript(self, key);
 }
 
 static Py_ssize_t
-hamt_slot_len(PyHamtObject *self)
+hamt_tp_len(PyHamtObject *self)
 {
     return hamt_len(self);
 }
 
 static PyObject *
-hamt_slot_iter(PyHamtObject *self)
+hamt_tp_iter(PyHamtObject *self)
 {
     return hamt_iter_new_keys(self);
 }
@@ -2569,28 +2778,12 @@ hamt_py_get(PyHamtObject *self, PyObject *args)
 {
     PyObject *key;
     PyObject *def = NULL;
-    PyObject *val = NULL;
-    hamt_find_t res;
 
-    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def))
-    {
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
         return NULL;
     }
 
-    res = hamt_find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            if (def == NULL) {
-                Py_RETURN_NONE;
-            }
-            Py_INCREF(def);
-            return def;
-    }
+    return hamt_get(self, key, def);
 }
 
 static PyObject *
@@ -2647,14 +2840,14 @@ static PySequenceMethods PyHamt_as_sequence = {
     0,                                /* sq_slice */
     0,                                /* sq_ass_item */
     0,                                /* sq_ass_slice */
-    (objobjproc)hamt_slot_contains,   /* sq_contains */
+    (objobjproc)hamt_tp_contains,     /* sq_contains */
     0,                                /* sq_inplace_concat */
     0,                                /* sq_inplace_repeat */
 };
 
 static PyMappingMethods PyHamt_as_mapping = {
-    (lenfunc)hamt_slot_len,           /* mp_length */
-    (binaryfunc)hamt_slot_subscript,  /* mp_subscript */
+    (lenfunc)hamt_tp_len,             /* mp_length */
+    (binaryfunc)hamt_tp_subscript,    /* mp_subscript */
 };
 
 PyTypeObject _PyHamt_Type = {
@@ -2664,14 +2857,14 @@ PyTypeObject _PyHamt_Type = {
     .tp_methods = PyHamt_methods,
     .tp_as_mapping = &PyHamt_as_mapping,
     .tp_as_sequence = &PyHamt_as_sequence,
-    .tp_iter = (getiterfunc)hamt_slot_iter,
-    .tp_dealloc = (destructor)hamt_slot_dealloc,
+    .tp_iter = (getiterfunc)hamt_tp_iter,
+    .tp_dealloc = (destructor)hamt_tp_dealloc,
     .tp_getattro = PyObject_GenericGetAttr,
     .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .tp_richcompare = hamt_slot_richcompare,
-    .tp_traverse = (traverseproc)hamt_slot_traverse,
-    .tp_clear = (inquiry)hamt_slot_clear,
-    .tp_new = hamt_slot_new,
+    .tp_richcompare = hamt_tp_richcompare,
+    .tp_traverse = (traverseproc)hamt_tp_traverse,
+    .tp_clear = (inquiry)hamt_tp_clear,
+    .tp_new = hamt_tp_new,
     .tp_weaklistoffset = offsetof(PyHamtObject, h_weakreflist),
 };
 
