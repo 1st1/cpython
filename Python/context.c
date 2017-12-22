@@ -5,8 +5,22 @@
 #include "internal/context.h"
 
 
+typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
+typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
+typedef enum {I_ITEM, I_END} hamt_iter_t;
+
+
 static PyHamtObject *
 hamt_new(void);
+
+static PyHamtObject *
+hamt_assoc(PyHamtObject *o, PyObject *key, PyObject *val);
+
+static PyHamtObject *
+hamt_without(PyHamtObject *o, PyObject *key);
+
+static hamt_find_t
+hamt_find(PyHamtObject *o, PyObject *key, PyObject **val);
 
 static int
 hamt_eq(PyHamtObject *v, PyHamtObject *w);
@@ -31,6 +45,93 @@ hamt_iter_new_values(PyHamtObject *o);
 
 static PyObject *
 hamt_iter_new_items(PyHamtObject *o);
+
+
+/////////////////////////// Context API
+
+
+PyObject *
+_PyContext_NewHamtForTests(void)
+{
+    return (PyObject *)hamt_new();
+}
+
+PyObject *
+PyContextVar_Get(PyContextVar *var, PyObject *def)
+{
+    PyThreadState *ts = PyThreadState_Get();
+
+    if (!PyContextVar_CheckExact(var)) {
+        PyErr_SetString(
+            PyExc_TypeError, "an instance of ContextVar was expected");
+        return NULL;
+    }
+
+    if (ts->contextvars == NULL) {
+        goto not_found;
+    }
+
+    assert(PyHamt_Check(ts->contextvars));
+    PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
+
+    PyObject *val = NULL;
+    hamt_find_t res = hamt_find(vars, (PyObject*)var, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            goto not_found;
+    }
+
+not_found:
+    if (def == NULL) {
+        if (var->var_default != NULL) {
+            Py_INCREF(var->var_default);
+            return var->var_default;
+        }
+
+        PyErr_SetObject(PyExc_LookupError, (PyObject*) var);
+        return NULL;
+    }
+    else {
+        Py_INCREF(def);
+        return def;
+    }
+}
+
+PyObject *
+PyContextVar_Set(PyContextVar *var, PyObject *val)
+{
+    PyThreadState *ts = PyThreadState_Get();
+
+    if (!PyContextVar_CheckExact(var)) {
+        PyErr_SetString(
+            PyExc_TypeError, "an instance of ContextVar was expected");
+        return NULL;
+    }
+
+    if (ts->contextvars == NULL) {
+        ts->contextvars = (PyObject *)hamt_new();
+        if (ts->contextvars == NULL) {
+            return NULL;
+        }
+    }
+
+    assert(PyHamt_Check(ts->contextvars));
+    PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
+
+    PyHamtObject *new_vars = hamt_assoc(vars, (PyObject*)var, val);
+    if (new_vars == NULL) {
+        return NULL;
+    }
+
+    ts->contextvars = (PyObject *)new_vars;
+    Py_DECREF(vars);
+    Py_RETURN_NONE;
+}
 
 
 /////////////////////////// PyContext
@@ -162,11 +263,63 @@ context_values(PyContext *self, PyObject *args)
     return hamt_iter_new_keys(self->ctx_vars);
 }
 
+static PyObject *
+context_run(PyContext *self, PyObject *args, PyObject *kwargs)
+{
+    PyThreadState *ts = PyThreadState_Get();
+
+    assert(PyTuple_CheckExact(args));
+    Py_ssize_t args_len = PyTuple_GET_SIZE(args);
+
+    if (args_len < 1) {
+        PyErr_SetString(PyExc_TypeError,
+                        "run() missing 1 required positional argument");
+        return NULL;
+    }
+
+    PyObject *new_args;
+    if (args_len > 1) {
+        new_args = PyTuple_New(args_len - 1);
+        if (new_args == NULL) {
+            return NULL;
+        }
+
+        PyObject *el;
+        for (Py_ssize_t i = 0; i < args_len - 1; i++) {
+            el = PyTuple_GET_ITEM(args, i + 1);
+            Py_INCREF(el);
+            PyTuple_SET_ITEM(new_args, i, el);
+        }
+    }
+    else {
+        new_args = PyTuple_New(0);
+        if (new_args == NULL) {
+            return NULL;
+        }
+    }
+
+    PyObject *old_ctx = ts->contextvars;
+
+    Py_INCREF(self->ctx_vars);
+    ts->contextvars = (PyObject *)self->ctx_vars;
+
+    PyObject *call_result = PyObject_Call(
+        PyTuple_GET_ITEM(args, 0), new_args, kwargs);
+    Py_DECREF(new_args);
+
+    Py_DECREF(self->ctx_vars);
+    self->ctx_vars = (PyHamtObject *)ts->contextvars;
+    ts->contextvars = old_ctx;
+
+    return call_result;
+}
+
 static PyMethodDef PyContext_methods[] = {
     {"get", (PyCFunction)context_get, METH_VARARGS, NULL},
     {"items", (PyCFunction)context_items, METH_NOARGS, NULL},
     {"keys", (PyCFunction)context_keys, METH_NOARGS, NULL},
     {"values", (PyCFunction)context_values, METH_NOARGS, NULL},
+    {"run", (PyCFunction)context_run, METH_VARARGS|METH_KEYWORDS, NULL},
     {NULL, NULL}
 };
 
@@ -233,12 +386,11 @@ contextvar_new_hash(void *addr, PyObject *name)
         return -1;
     }
 
-    Py_hash_t addr_hash = _Py_HashPointer(addr);
-    Py_hash_t res;
-
-    res = (addr_hash ^ name_hash);
+    Py_hash_t res = _Py_HashPointer(addr) ^ name_hash;
     return res == -1 ? -2 : res;
 }
+
+// static PyObject *
 
 static PyObject *
 contextvar_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
@@ -367,7 +519,25 @@ error:
     return NULL;
 }
 
+static PyObject *
+contextvar_get(PyContextVar *self, PyObject *args)
+{
+    PyObject *def = NULL;
+    if (!PyArg_UnpackTuple(args, "get", 0, 1, &def)) {
+        return NULL;
+    }
+    return PyContextVar_Get(self, def);
+}
+
+static PyObject *
+contextvar_set(PyContextVar *self, PyObject *val)
+{
+    return PyContextVar_Set(self, val);
+}
+
 static PyMethodDef PyContextVar_methods[] = {
+    {"get", (PyCFunction)contextvar_get, METH_VARARGS, NULL},
+    {"set", (PyCFunction)contextvar_set, METH_O, NULL},
     {NULL, NULL}
 };
 
@@ -388,22 +558,7 @@ PyTypeObject PyContextVar_Type = {
 };
 
 
-/////////////////////////// APIs
-
-
-PyObject *
-_PyContext_NewHamtForTests(void)
-{
-    return (PyObject *)hamt_new();
-}
-
-
 /////////////////////////// HAMT DATASTRUCTURE IMPLEMENTATION
-
-
-typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
-typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
-typedef enum {I_ITEM, I_END} hamt_iter_t;
 
 
 #define IS_ARRAY_NODE(node)     (Py_TYPE(node) == &_PyHamt_ArrayNode_Type)

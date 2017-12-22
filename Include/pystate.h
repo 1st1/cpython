@@ -268,6 +268,8 @@ typedef struct _ts {
     PyObject *async_gen_firstiter;
     PyObject *async_gen_finalizer;
 
+    PyObject *contextvars;
+
     /* XXX signal handlers should also be here */
 
 } PyThreadState;
