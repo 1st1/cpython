@@ -217,6 +217,15 @@ contextvar_new_hash(void *addr, PyObject *name)
     /* Take hash of the name and XOR it with the default object hash.
        We do this to ensure that even sequentially allocated ContextVar
        objects have drastically different hashes.
+
+       OTOH, we can't just return the hash of name.  For two variables
+       below:
+
+            c1 = ContextVar('somename')
+            c2 = ContextVar('somename')
+
+       c1 and c2 are completely different variables that happen to
+       have the same name.
     */
 
     Py_hash_t name_hash = PyObject_Hash(name);
