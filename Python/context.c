@@ -57,6 +57,10 @@ module _contextvars
 /////////////////////////// Context API
 
 
+static PyContext *
+context_new(PyHamtObject *vars);
+
+
 PyObject *
 _PyContext_NewHamtForTests(void)
 {
@@ -67,20 +71,15 @@ _PyContext_NewHamtForTests(void)
 PyContext *
 PyContext_New(void)
 {
-    PyContext *ctx = PyObject_GC_New(PyContext, &PyContext_Type);
-    if (ctx == NULL) {
-        return NULL;
-    }
+    return context_new(NULL);
+}
 
-    ctx->ctx_vars = hamt_new();
-    if (ctx->ctx_vars == NULL) {
-        Py_DECREF(ctx);
-        return NULL;
-    }
 
-    ctx->ctx_weakreflist = NULL;
-    PyObject_GC_Track(ctx);
-    return ctx;
+PyContext *
+PyContext_Get(void)
+{
+    PyThreadState *ts = PyThreadState_Get();
+    return context_new((PyHamtObject*)ts->contextvars);
 }
 
 
@@ -163,12 +162,48 @@ PyContextVar_Set(PyContextVar *var, PyObject *val)
 
 /////////////////////////// PyContext
 
-
 /*[clinic input]
 class _contextvars.Context "PyContext *" "&PyContext_Type"
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdf87f8e0cb580e8]*/
 
+static PyContext *
+context_new(PyHamtObject *vars)
+{
+    PyContext *ctx = PyObject_GC_New(PyContext, &PyContext_Type);
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    if (vars == NULL) {
+        ctx->ctx_vars = hamt_new();
+        if (ctx->ctx_vars == NULL) {
+            Py_DECREF(ctx);
+            return NULL;
+        }
+    }
+    else {
+        assert(PyHamt_Check(vars));
+        Py_INCREF(vars);
+        ctx->ctx_vars = vars;
+    }
+
+    ctx->ctx_weakreflist = NULL;
+    PyObject_GC_Track(ctx);
+    return ctx;
+}
+
+static int
+context_check_key_type(PyObject *key)
+{
+    if (!PyContextVar_CheckExact(key)) {
+        // abort();
+        PyErr_Format(PyExc_TypeError,
+                     "a ContextVar key was expected, got %R", key);
+        return -1;
+    }
+    return 0;
+}
 
 static PyObject *
 context_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
@@ -180,7 +215,6 @@ context_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     }
     return (PyObject *)PyContext_New();
 }
-
 
 static int
 context_tp_clear(PyContext *self)
@@ -248,12 +282,18 @@ context_tp_len(PyContext *self)
 static PyObject *
 context_tp_subscript(PyContext *self, PyObject *key)
 {
+    if (context_check_key_type(key)) {
+        return NULL;
+    }
     return hamt_subscript(self->ctx_vars, key);
 }
 
 static int
 context_tp_contains(PyContext *self, PyObject *key)
 {
+    if (context_check_key_type(key)) {
+        return -1;
+    }
     return hamt_contains(self->ctx_vars, key);
 }
 
@@ -270,6 +310,9 @@ _contextvars_Context_get_impl(PyContext *self, PyObject *key,
                               PyObject *default_value)
 /*[clinic end generated code: output=0c54aa7664268189 input=8d4c33c8ecd6d769]*/
 {
+    if (context_check_key_type(key)) {
+        return NULL;
+    }
     return hamt_get(self->ctx_vars, key, default_value);
 }
 

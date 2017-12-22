@@ -499,6 +499,8 @@ PyThreadState_Clear(PyThreadState *tstate)
     Py_CLEAR(tstate->coroutine_wrapper);
     Py_CLEAR(tstate->async_gen_firstiter);
     Py_CLEAR(tstate->async_gen_finalizer);
+
+    Py_CLEAR(tstate->contextvars);
 }
 
 

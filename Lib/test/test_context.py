@@ -53,6 +53,20 @@ class ContextTest(unittest.TestCase):
             contextvars.Context(a=1)
         contextvars.Context(**{})
 
+    def test_context_typerrors_1(self):
+        ctx = contextvars.Context()
+
+        with self.assertRaisesRegex(TypeError, 'ContextVar key was expected'):
+            ctx[1]
+        with self.assertRaisesRegex(TypeError, 'ContextVar key was expected'):
+            1 in ctx
+        with self.assertRaisesRegex(TypeError, 'ContextVar key was expected'):
+            ctx.get(1)
+
+    def test_context_get_context_1(self):
+        ctx = contextvars.get_context()
+        self.assertIsInstance(ctx, contextvars.Context)
+
     def test_context_run_1(self):
         ctx = contextvars.Context()
 
@@ -115,7 +129,15 @@ class ContextTest(unittest.TestCase):
             ctx2.run(func2)
             self.assertEqual(var.get(None), 'spam')
 
-        ctx1.run(func1)
+            cur = contextvars.get_context()
+            self.assertEqual(len(cur), 1)
+            self.assertEqual(cur[var], 'spam')
+            return cur
+
+        returned_ctx = ctx1.run(func1)
+        self.assertEqual(ctx1, returned_ctx)
+        self.assertEqual(returned_ctx[var], 'spam')
+        self.assertIn(var, returned_ctx)
 
     def test_context_run_5(self):
         ctx = contextvars.Context()
