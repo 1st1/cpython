@@ -18,6 +18,8 @@ typedef struct _pycontextvarobject PyContextVar;
 #define PyContext_CheckExact(o) (Py_TYPE(o) == &PyContext_Type)
 #define PyContextVar_CheckExact(o) (Py_TYPE(o) == &PyContextVar_Type)
 
+PyAPI_FUNC(PyContext *) PyContext_New(void);
+
 PyAPI_FUNC(PyObject *) PyContextVar_Get(PyContextVar *, PyObject *);
 PyAPI_FUNC(PyObject *) PyContextVar_Set(PyContextVar *, PyObject *);
 
