@@ -50,6 +50,15 @@ class ContextTest(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, 'missing 1 required'):
             ctx.run()
 
+    def test_context_new_1(self):
+        with self.assertRaisesRegex(TypeError, 'any arguments'):
+            contextvars.Context(1)
+        with self.assertRaisesRegex(TypeError, 'any arguments'):
+            contextvars.Context(1, a=1)
+        with self.assertRaisesRegex(TypeError, 'any arguments'):
+            contextvars.Context(a=1)
+        contextvars.Context(**{})
+
     @isolated_context
     def test_context_run_2(self):
         ctx1 = contextvars.Context()

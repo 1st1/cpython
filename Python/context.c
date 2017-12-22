@@ -56,6 +56,27 @@ _PyContext_NewHamtForTests(void)
     return (PyObject *)hamt_new();
 }
 
+
+PyContext *
+PyContext_New(void)
+{
+    PyContext *ctx = PyObject_GC_New(PyContext, &PyContext_Type);
+    if (ctx == NULL) {
+        return NULL;
+    }
+
+    ctx->ctx_vars = hamt_new();
+    if (ctx->ctx_vars == NULL) {
+        Py_DECREF(ctx);
+        return NULL;
+    }
+
+    ctx->ctx_weakreflist = NULL;
+    PyObject_GC_Track(ctx);
+    return ctx;
+}
+
+
 PyObject *
 PyContextVar_Get(PyContextVar *var, PyObject *def)
 {
@@ -139,20 +160,12 @@ PyContextVar_Set(PyContextVar *var, PyObject *val)
 static PyObject *
 context_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
-    PyContext *o = PyObject_GC_New(PyContext, &PyContext_Type);
-    if (o == NULL) {
+    if (PyTuple_Size(args) || (kwds != NULL && PyDict_Size(kwds))) {
+        PyErr_SetString(
+            PyExc_TypeError, "Context() does not accept any arguments");
         return NULL;
     }
-
-    o->ctx_vars = hamt_new();
-    if (o->ctx_vars == NULL) {
-        Py_DECREF(o);
-        return NULL;
-    }
-
-    o->ctx_weakreflist = NULL;
-    PyObject_GC_Track(o);
-    return (PyObject*)o;
+    return (PyObject *)PyContext_New();
 }
 
 
