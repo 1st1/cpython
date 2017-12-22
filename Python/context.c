@@ -365,7 +365,7 @@ PyTypeObject PyContext_Type = {
 
 
 static Py_hash_t
-contextvar_new_hash(void *addr, PyObject *name)
+contextvar_generate_hash(void *addr, PyObject *name)
 {
     /* Take hash of the name and XOR it with the default object hash.
        We do this to ensure that even sequentially allocated ContextVar
@@ -416,7 +416,7 @@ contextvar_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         return NULL;
     }
 
-    o->var_hash = contextvar_new_hash(o, name);
+    o->var_hash = contextvar_generate_hash(o, name);
     if (o->var_hash == -1) {
         Py_DECREF(o);
         return NULL;
