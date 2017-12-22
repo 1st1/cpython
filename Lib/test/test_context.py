@@ -44,12 +44,6 @@ class ContextTest(unittest.TestCase):
         self.assertIn('...', repr(c))
         self.assertIn('...', repr(lst))
 
-    def test_context_run_1(self):
-        ctx = contextvars.Context()
-
-        with self.assertRaisesRegex(TypeError, 'missing 1 required'):
-            ctx.run()
-
     def test_context_new_1(self):
         with self.assertRaisesRegex(TypeError, 'any arguments'):
             contextvars.Context(1)
@@ -59,8 +53,55 @@ class ContextTest(unittest.TestCase):
             contextvars.Context(a=1)
         contextvars.Context(**{})
 
-    @isolated_context
+    def test_context_run_1(self):
+        ctx = contextvars.Context()
+
+        with self.assertRaisesRegex(TypeError, 'missing 1 required'):
+            ctx.run()
+
     def test_context_run_2(self):
+        ctx = contextvars.Context()
+
+        def func(*args, **kwargs):
+            kwargs['spam'] = 'foo'
+            args += ('bar',)
+            return args, kwargs
+
+        for f in (func, functools.partial(func)):
+            # partial doesn't support FASTCALL
+
+            self.assertEqual(ctx.run(f), (('bar',), {'spam': 'foo'}))
+            self.assertEqual(ctx.run(f, 1), ((1, 'bar'), {'spam': 'foo'}))
+
+            self.assertEqual(
+                ctx.run(f, a=2),
+                (('bar',), {'a': 2, 'spam': 'foo'}))
+
+            self.assertEqual(
+                ctx.run(f, 11, a=2),
+                ((11, 'bar'), {'a': 2, 'spam': 'foo'}))
+
+            a = {}
+            self.assertEqual(
+                ctx.run(f, 11, **a),
+                ((11, 'bar'), {'spam': 'foo'}))
+            self.assertEqual(a, {})
+
+    def test_context_run_3(self):
+        ctx = contextvars.Context()
+
+        def func(*args, **kwargs):
+            1 / 0
+
+        with self.assertRaises(ZeroDivisionError):
+            ctx.run(func)
+        with self.assertRaises(ZeroDivisionError):
+            ctx.run(func, 1, 2)
+        with self.assertRaises(ZeroDivisionError):
+            ctx.run(func, 1, 2, a=123)
+
+    @isolated_context
+    def test_context_run_4(self):
         ctx1 = contextvars.Context()
         ctx2 = contextvars.Context()
         var = contextvars.ContextVar('var')
@@ -76,7 +117,7 @@ class ContextTest(unittest.TestCase):
 
         ctx1.run(func1)
 
-    def test_context_run_3(self):
+    def test_context_run_5(self):
         ctx = contextvars.Context()
         var = contextvars.ContextVar('var')
 
