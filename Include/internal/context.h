@@ -6,30 +6,30 @@
 #define HAMT_MAX_TREE_DEPTH 7
 
 
-#define PyHamt_Check(o) (Py_TYPE(o) == &PyHamt_Type)
+#define PyHamt_Check(o) (Py_TYPE(o) == &_PyHamt_Type)
 
 
 typedef struct {
-    PyObject_HEAD
-} _PyHamtNode_BaseNode;
+    PyObject_VAR_HEAD
+} PyHamtNode;
 
 
 typedef struct {
-    PyObject_HEAD
-    _PyHamtNode_BaseNode *a_array[HAMT_ARRAY_NODE_SIZE];
+    PyHamtNode _a_base;
+    PyHamtNode *a_array[HAMT_ARRAY_NODE_SIZE];
     Py_ssize_t a_count;
 } PyHamtNode_Array;
 
 
 typedef struct {
-    PyObject_VAR_HEAD
+    PyHamtNode _b_base;
     uint32_t b_bitmap;
     PyObject *b_array[1];
 } PyHamtNode_Bitmap;
 
 
 typedef struct {
-    PyObject_VAR_HEAD
+    PyHamtNode _c_base;
     int32_t c_hash;
     PyObject *c_array[1];
 } PyHamtNode_Collision;
@@ -37,7 +37,7 @@ typedef struct {
 
 typedef struct {
     PyObject_HEAD
-    _PyHamtNode_BaseNode *h_root;
+    PyHamtNode *h_root;
     PyObject *h_weakreflist;
     Py_ssize_t h_count;
 } PyHamtObject;
@@ -57,7 +57,7 @@ typedef struct {
        - i_level: the current node in i_nodes
        - i_pos: an array of positions within nodes in i_nodes.
     */
-    _PyHamtNode_BaseNode *i_nodes[HAMT_MAX_TREE_DEPTH];
+    PyHamtNode *i_nodes[HAMT_MAX_TREE_DEPTH];
     Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
     int8_t i_level;
 } PyHamtIteratorState;
@@ -71,13 +71,13 @@ typedef struct {
 } PyHamtIterator;
 
 
-PyAPI_DATA(PyTypeObject) PyHamt_Type;
+PyAPI_DATA(PyTypeObject) _PyHamt_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_ArrayNode_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_BitmapNode_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_CollisionNode_Type;
-PyAPI_DATA(PyTypeObject) PyHamtKeys_Type;
-PyAPI_DATA(PyTypeObject) PyHamtValues_Type;
-PyAPI_DATA(PyTypeObject) PyHamtItems_Type;
+PyAPI_DATA(PyTypeObject) _PyHamtKeys_Type;
+PyAPI_DATA(PyTypeObject) _PyHamtValues_Type;
+PyAPI_DATA(PyTypeObject) _PyHamtItems_Type;
 
 
 #endif /* !Py_INTERNAL_CONTEXT_H */
