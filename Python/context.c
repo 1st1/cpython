@@ -47,6 +47,13 @@ static PyObject *
 hamt_iter_new_items(PyHamtObject *o);
 
 
+#include "clinic/context.c.h"
+/*[clinic input]
+module _contextvars
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=a0955718c8b8cea6]*/
+
+
 /////////////////////////// Context API
 
 
@@ -157,6 +164,12 @@ PyContextVar_Set(PyContextVar *var, PyObject *val)
 /////////////////////////// PyContext
 
 
+/*[clinic input]
+class _contextvars.Context "PyContext *" "&PyContext_Type"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdf87f8e0cb580e8]*/
+
+
 static PyObject *
 context_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
@@ -244,70 +257,69 @@ context_tp_contains(PyContext *self, PyObject *key)
     return hamt_contains(self->ctx_vars, key);
 }
 
+
+/*[clinic input]
+_contextvars.Context.get
+    key: object
+    default: object = None
+    /
+[clinic start generated code]*/
+
 static PyObject *
-context_get(PyContext *self, PyObject *args)
+_contextvars_Context_get_impl(PyContext *self, PyObject *key,
+                              PyObject *default_value)
+/*[clinic end generated code: output=0c54aa7664268189 input=8d4c33c8ecd6d769]*/
 {
-    PyObject *key;
-    PyObject *def = NULL;
-
-    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def)) {
-        return NULL;
-    }
-
-    return hamt_get(self->ctx_vars, key, def);
+    return hamt_get(self->ctx_vars, key, default_value);
 }
 
+
+/*[clinic input]
+_contextvars.Context.items
+[clinic start generated code]*/
+
 static PyObject *
-context_items(PyContext *self, PyObject *args)
+_contextvars_Context_items_impl(PyContext *self)
+/*[clinic end generated code: output=fa1655c8a08502af input=2d570d1455004979]*/
 {
     return hamt_iter_new_items(self->ctx_vars);
 }
 
+
+/*[clinic input]
+_contextvars.Context.keys
+[clinic start generated code]*/
+
 static PyObject *
-context_keys(PyContext *self, PyObject *args)
+_contextvars_Context_keys_impl(PyContext *self)
+/*[clinic end generated code: output=177227c6b63ec0e2 input=13005e142fbbf37d]*/
 {
     return hamt_iter_new_keys(self->ctx_vars);
 }
 
+
+/*[clinic input]
+_contextvars.Context.values
+[clinic start generated code]*/
+
 static PyObject *
-context_values(PyContext *self, PyObject *args)
+_contextvars_Context_values_impl(PyContext *self)
+/*[clinic end generated code: output=d286dabfc8db6dde input=c2cbc40a4470e905]*/
 {
     return hamt_iter_new_keys(self->ctx_vars);
 }
 
+
 static PyObject *
-context_run(PyContext *self, PyObject *args, PyObject *kwargs)
+context_run(PyContext *self, PyObject *const *args,
+            Py_ssize_t nargs, PyObject *kwnames)
 {
     PyThreadState *ts = PyThreadState_Get();
 
-    assert(PyTuple_CheckExact(args));
-    Py_ssize_t args_len = PyTuple_GET_SIZE(args);
-
-    if (args_len < 1) {
+    if (nargs < 1) {
         PyErr_SetString(PyExc_TypeError,
                         "run() missing 1 required positional argument");
         return NULL;
-    }
-
-    PyObject *new_args;
-    if (args_len > 1) {
-        new_args = PyTuple_New(args_len - 1);
-        if (new_args == NULL) {
-            return NULL;
-        }
-
-        PyObject *el;
-        for (Py_ssize_t i = 0; i < args_len - 1; i++) {
-            el = PyTuple_GET_ITEM(args, i + 1);
-            Py_INCREF(el);
-            PyTuple_SET_ITEM(new_args, i, el);
-        }
-    }
-    else {
-        new_args = PyTuple_New(0);
-        if (new_args == NULL) {
-            return NULL;
-        }
     }
 
     PyObject *old_ctx = ts->contextvars;
@@ -315,9 +327,8 @@ context_run(PyContext *self, PyObject *args, PyObject *kwargs)
     Py_INCREF(self->ctx_vars);
     ts->contextvars = (PyObject *)self->ctx_vars;
 
-    PyObject *call_result = PyObject_Call(
-        PyTuple_GET_ITEM(args, 0), new_args, kwargs);
-    Py_DECREF(new_args);
+    PyObject *call_result = _PyObject_FastCallKeywords(
+        args[0], args + 1, nargs - 1, kwnames);
 
     Py_DECREF(self->ctx_vars);
     self->ctx_vars = (PyHamtObject *)ts->contextvars;
@@ -326,12 +337,13 @@ context_run(PyContext *self, PyObject *args, PyObject *kwargs)
     return call_result;
 }
 
+
 static PyMethodDef PyContext_methods[] = {
-    {"get", (PyCFunction)context_get, METH_VARARGS, NULL},
-    {"items", (PyCFunction)context_items, METH_NOARGS, NULL},
-    {"keys", (PyCFunction)context_keys, METH_NOARGS, NULL},
-    {"values", (PyCFunction)context_values, METH_NOARGS, NULL},
-    {"run", (PyCFunction)context_run, METH_VARARGS|METH_KEYWORDS, NULL},
+    _CONTEXTVARS_CONTEXT_GET_METHODDEF
+    _CONTEXTVARS_CONTEXT_ITEMS_METHODDEF
+    _CONTEXTVARS_CONTEXT_KEYS_METHODDEF
+    _CONTEXTVARS_CONTEXT_VALUES_METHODDEF
+    {"run", (PyCFunction)context_run, METH_FASTCALL | METH_KEYWORDS, NULL},
     {NULL, NULL}
 };
 
