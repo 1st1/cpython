@@ -1,13 +1,38 @@
 #include "Python.h"
 
+#include "clinic/_contextvarsmodule.c.h"
+
+/*[clinic input]
+module _contextvars
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=a0955718c8b8cea6]*/
+
+
+/*[clinic input]
+_contextvars.get_context
+[clinic start generated code]*/
+
+static PyObject *
+_contextvars_get_context_impl(PyObject *module)
+/*[clinic end generated code: output=9f4603016762a60d input=b5f1ecf680c1a26e]*/
+{
+    return (PyObject *)PyContext_Get();
+}
+
+
 PyDoc_STRVAR(module_doc, "Context Variables");
+
+static PyMethodDef _contextvars_methods[] = {
+    _CONTEXTVARS_GET_CONTEXT_METHODDEF
+    {NULL, NULL}
+};
 
 static struct PyModuleDef _contextvarsmodule = {
     PyModuleDef_HEAD_INIT,      /* m_base */
     "_contextvars",             /* m_name */
     module_doc,                 /* m_doc */
     -1,                         /* m_size */
-    NULL,                       /* m_methods */
+    _contextvars_methods,       /* m_methods */
     NULL,                       /* m_slots */
     NULL,                       /* m_traverse */
     NULL,                       /* m_clear */
