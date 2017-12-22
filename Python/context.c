@@ -1,19 +1,448 @@
 #include "Python.h"
-#include "internal/pystate.h"
-#include "structmember.h"
 
+#include "structmember.h"
+#include "internal/pystate.h"
 #include "internal/context.h"
+
+
+typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
+typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
+typedef enum {I_ITEM, I_END} hamt_iter_t;
+
+
+static PyHamtObject *
+hamt_new(void);
+
+static PyHamtObject *
+hamt_assoc(PyHamtObject *o, PyObject *key, PyObject *val);
+
+static PyHamtObject *
+hamt_without(PyHamtObject *o, PyObject *key);
+
+static hamt_find_t
+hamt_find(PyHamtObject *o, PyObject *key, PyObject **val);
+
+static int
+hamt_eq(PyHamtObject *v, PyHamtObject *w);
+
+#ifdef Py_DEBUG
+static PyObject *
+hamt_dump(PyHamtObject *self);
+#endif
+
+static void
+hamt_iterator_init(PyHamtIteratorState *iter, _PyHamtNode_BaseNode *root);
+
+static hamt_iter_t
+hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val);
+
+
+PyObject *
+_PyContext_NewForTests(void)
+{
+    return (PyObject *)hamt_new();
+}
+
+
+/////////////////////////////////// Iterators: Shared Iterator Implementation
+
+
+static int
+PyHamtIterator_slot_clear(PyHamtIterator *it)
+{
+    Py_CLEAR(it->hi_obj);
+    return 0;
+}
+
+static void
+PyHamtIterator_slot_dealloc(PyHamtIterator *it)
+{
+    PyObject_GC_UnTrack(it);
+    (void)PyHamtIterator_slot_clear(it);
+    PyObject_GC_Del(it);
+}
+
+static int
+PyHamtIterator_slot_traverse(PyHamtIterator *it, visitproc visit, void *arg)
+{
+    Py_VISIT(it->hi_obj);
+    return 0;
+}
+
+static PyObject *
+PyHamtIterator_slot_iternext(PyHamtIterator *it)
+{
+    PyObject *key;
+    PyObject *val;
+    hamt_iter_t res = hamt_iterator_next(&it->hi_iter, &key, &val);
+
+    switch (res) {
+        case I_END:
+            PyErr_SetNone(PyExc_StopIteration);
+            return NULL;
+
+        case I_ITEM: {
+            return (*(it->hi_yield))(key, val);
+        }
+    }
+}
+
+static Py_ssize_t
+PyHamtIterator_slot_len(PyHamtIterator *it)
+{
+    return it->hi_obj->h_count;
+}
+
+static PyMappingMethods PyHamtIterator_as_mapping = {
+    (lenfunc)PyHamtIterator_slot_len,
+};
+
+static PyObject *
+hamt_new_PyHamtIterator(PyTypeObject *type, binaryfunc yield, PyHamtObject *o)
+{
+    PyHamtIterator *it = PyObject_GC_New(PyHamtIterator, type);
+    if (it == NULL) {
+        return NULL;
+    }
+
+    Py_INCREF(o);
+    it->hi_obj = o;
+    it->hi_yield = yield;
+
+    hamt_iterator_init(&it->hi_iter, o->h_root);
+
+    return (PyObject*)it;
+}
+
+#define ITERATOR_TYPE_SHARED_SLOTS                              \
+    .tp_basicsize = sizeof(PyHamtIterator),                     \
+    .tp_itemsize = 0,                                           \
+    .tp_as_mapping = &PyHamtIterator_as_mapping,                \
+    .tp_dealloc = (destructor)PyHamtIterator_slot_dealloc,      \
+    .tp_getattro = PyObject_GenericGetAttr,                     \
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,        \
+    .tp_traverse = (traverseproc)PyHamtIterator_slot_traverse,  \
+    .tp_clear = (inquiry)PyHamtIterator_slot_clear,             \
+    .tp_iter = PyObject_SelfIter,                               \
+    .tp_iternext = (iternextfunc)PyHamtIterator_slot_iternext,
+
+
+/////////////////////////////////// Iterators: Items
+
+
+PyTypeObject PyHamtItems_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "items",
+    ITERATOR_TYPE_SHARED_SLOTS
+};
+
+static PyObject *
+hamt_iter_yield_items(PyObject *key, PyObject *val)
+{
+    PyObject *tup = PyTuple_New(2);
+    if (tup == NULL) {
+        return tup;
+    }
+
+    Py_INCREF(key);
+    PyTuple_SET_ITEM(tup, 0, key);
+    Py_INCREF(val);
+    PyTuple_SET_ITEM(tup, 1, val);
+
+    return tup;
+}
+
+static PyObject *
+hamt_iter_new_items(PyHamtObject *o)
+{
+    return hamt_new_PyHamtIterator(
+        &PyHamtItems_Type, hamt_iter_yield_items, o);
+}
+
+
+/////////////////////////////////// Iterators: Keys
+
+
+PyTypeObject PyHamtKeys_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "keys",
+    ITERATOR_TYPE_SHARED_SLOTS
+};
+
+static PyObject *
+hamt_iter_yield_keys(PyObject *key, PyObject *val)
+{
+    Py_INCREF(key);
+    return key;
+}
+
+static PyObject *
+hamt_iter_new_keys(PyHamtObject *o)
+{
+    return hamt_new_PyHamtIterator(
+        &PyHamtKeys_Type, hamt_iter_yield_keys, o);
+}
+
+
+/////////////////////////////////// Iterators: Values
+
+
+PyTypeObject PyHamtValues_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "values",
+    ITERATOR_TYPE_SHARED_SLOTS
+};
+
+static PyObject *
+hamt_iter_yield_values(PyObject *key, PyObject *val)
+{
+    Py_INCREF(val);
+    return val;
+}
+
+static PyObject *
+hamt_iter_new_values(PyHamtObject *o)
+{
+    return hamt_new_PyHamtIterator(
+        &PyHamtValues_Type, hamt_iter_yield_values, o);
+}
+
+
+//////////////////////// HAMT
+
+
+static PyObject *
+hamt_slot_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
+{
+    return (PyObject*)hamt_new();
+}
+
+static int
+hamt_slot_clear(PyHamtObject *self)
+{
+    Py_CLEAR(self->h_root);
+    return 0;
+}
+
+
+static int
+hamt_slot_traverse(PyHamtObject *self, visitproc visit, void *arg)
+{
+    Py_VISIT(self->h_root);
+    return 0;
+}
+
+static void
+hamt_slot_dealloc(PyHamtObject *self)
+{
+    PyObject_GC_UnTrack(self);
+    if (self->h_weakreflist != NULL) {
+        PyObject_ClearWeakRefs((PyObject*)self);
+    }
+    (void)hamt_slot_clear(self);
+    Py_TYPE(self)->tp_free(self);
+}
+
+
+static PyObject *
+hamt_slot_richcompare(PyObject *v, PyObject *w, int op)
+{
+    if (!PyHamt_Check(v) || !PyHamt_Check(w) || (op != Py_EQ && op != Py_NE)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    int res = hamt_eq((PyHamtObject *)v, (PyHamtObject *)w);
+    if (res < 0) {
+        return NULL;
+    }
+
+    if (op == Py_NE) {
+        res = !res;
+    }
+
+    if (res) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        Py_RETURN_FALSE;
+    }
+}
+
+static int
+hamt_slot_contains(PyHamtObject *self, PyObject *key)
+{
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return -1;
+        case F_FOUND:
+            return 1;
+        case F_NOT_FOUND:
+            return 0;
+    }
+}
+
+static PyObject *
+hamt_slot_subscript(PyHamtObject *self, PyObject *key)
+{
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            PyErr_SetObject(PyExc_KeyError, key);
+            return NULL;
+    }
+}
+
+static Py_ssize_t
+hamt_slot_len(PyHamtObject *self)
+{
+    return self->h_count;
+}
+
+static PyObject *
+hamt_slot_iter(PyHamtObject *self)
+{
+    return hamt_iter_new_keys(self);
+}
+
+static PyObject *
+hamt_py_set(PyHamtObject *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *val;
+
+    if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
+        return NULL;
+    }
+
+    return (PyObject *)hamt_assoc(self, key, val);
+}
+
+static PyObject *
+hamt_py_get(PyHamtObject *self, PyObject *args)
+{
+    PyObject *key;
+    PyObject *def = NULL;
+    PyObject *val = NULL;
+    hamt_find_t res;
+
+    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def))
+    {
+        return NULL;
+    }
+
+    res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            if (def == NULL) {
+                Py_RETURN_NONE;
+            }
+            Py_INCREF(def);
+            return def;
+    }
+}
+
+static PyObject *
+hamt_py_delete(PyHamtObject *self, PyObject *key)
+{
+    return (PyObject *)hamt_without(self, key);
+}
+
+static PyObject *
+hamt_py_items(PyHamtObject *self, PyObject *args)
+{
+    return hamt_iter_new_items(self);
+}
+
+static PyObject *
+hamt_py_values(PyHamtObject *self, PyObject *args)
+{
+    return hamt_iter_new_values(self);
+}
+
+static PyObject *
+hamt_py_keys(PyHamtObject *self, PyObject *args)
+{
+    return hamt_iter_new_keys(self);
+}
+
+#ifdef Py_DEBUG
+static PyObject *
+hamt_py_dump(PyHamtObject *self, PyObject *args)
+{
+    return hamt_dump(self);
+}
+#endif
+
+
+static PyMethodDef PyHamt_methods[] = {
+    {"set", (PyCFunction)hamt_py_set, METH_VARARGS, NULL},
+    {"get", (PyCFunction)hamt_py_get, METH_VARARGS, NULL},
+    {"delete", (PyCFunction)hamt_py_delete, METH_O, NULL},
+    {"items", (PyCFunction)hamt_py_items, METH_NOARGS, NULL},
+    {"keys", (PyCFunction)hamt_py_keys, METH_NOARGS, NULL},
+    {"values", (PyCFunction)hamt_py_values, METH_NOARGS, NULL},
+#ifdef Py_DEBUG
+    {"__dump__", (PyCFunction)hamt_py_dump, METH_NOARGS, NULL},
+#endif
+    {NULL, NULL}
+};
+
+static PySequenceMethods PyHamt_as_sequence = {
+    0,                                /* sq_length */
+    0,                                /* sq_concat */
+    0,                                /* sq_repeat */
+    0,                                /* sq_item */
+    0,                                /* sq_slice */
+    0,                                /* sq_ass_item */
+    0,                                /* sq_ass_slice */
+    (objobjproc)hamt_slot_contains,   /* sq_contains */
+    0,                                /* sq_inplace_concat */
+    0,                                /* sq_inplace_repeat */
+};
+
+static PyMappingMethods PyHamt_as_mapping = {
+    (lenfunc)hamt_slot_len,           /* mp_length */
+    (binaryfunc)hamt_slot_subscript,  /* mp_subscript */
+};
+
+PyTypeObject PyHamt_Type = {
+    PyVarObject_HEAD_INIT(&PyType_Type, 0)
+    "hamt",
+    sizeof(PyHamtObject),
+    .tp_methods = PyHamt_methods,
+    .tp_as_mapping = &PyHamt_as_mapping,
+    .tp_as_sequence = &PyHamt_as_sequence,
+    .tp_iter = (getiterfunc)hamt_slot_iter,
+    .tp_dealloc = (destructor)hamt_slot_dealloc,
+    .tp_getattro = PyObject_GenericGetAttr,
+    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
+    .tp_richcompare = hamt_slot_richcompare,
+    .tp_traverse = (traverseproc)hamt_slot_traverse,
+    .tp_clear = (inquiry)hamt_slot_clear,
+    .tp_new = hamt_slot_new,
+    .tp_weaklistoffset = offsetof(PyHamtObject, h_weakreflist),
+};
+
+
+/////////////////////////// HAMT DATASTRUCTURE IMPLEMENTATION
 
 
 #define IS_ARRAY_NODE(node)     (Py_TYPE(node) == &_PyHamt_ArrayNode_Type)
 #define IS_BITMAP_NODE(node)    (Py_TYPE(node) == &_PyHamt_BitmapNode_Type)
 #define IS_COLLISION_NODE(node) (Py_TYPE(node) == &_PyHamt_CollisionNode_Type)
-
-#define PyHamt_Check(o) (Py_TYPE(o) == &PyHamt_Type)
-
-
-typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
-typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
 
 
 #ifndef PyHamtNode_Bitmap_MAXSAVESIZE
@@ -47,9 +476,6 @@ static PyHamtNode_Bitmap *_empty_bitmap_node;
 static PyHamtObject *
 hamt_alloc(void);
 
-static PyHamtObject *
-hamt_new_empty(void);
-
 static _PyHamtNode_BaseNode *
 hamt_node_assoc(_PyHamtNode_BaseNode *node,
                 uint32_t shift, int32_t hash,
@@ -66,6 +492,12 @@ hamt_node_find(_PyHamtNode_BaseNode *node,
                uint32_t shift, int32_t hash,
                PyObject *key, PyObject **val);
 
+#ifdef Py_DEBUG
+static int
+hamt_node_dump(_PyHamtNode_BaseNode *node,
+               _PyUnicodeWriter *writer, int level);
+#endif
+
 static _PyHamtNode_BaseNode *
 hamt_node_array_new(Py_ssize_t);
 
@@ -77,35 +509,25 @@ hamt_node_collision_count(PyHamtNode_Collision *node);
 
 
 #ifdef Py_DEBUG
-static int
-hamt_node_dump(_PyHamtNode_BaseNode *node,
-               _PyUnicodeWriter *writer, int level);
-#endif
+static void
+_hamt_node_array_validate(void *o)
+{
+    assert(IS_ARRAY_NODE(o));
+    PyHamtNode_Array *node = (PyHamtNode_Array*)(o);
+    Py_ssize_t i = 0, count = 0;
+    for (; i < HAMT_ARRAY_NODE_SIZE; i++) {
+        if (node->a_array[i] != NULL) {
+            count++;
+        }
+    }
+    assert(count == node->a_count);
+}
 
-
-#ifdef Py_DEBUG
-#define VALIDATE_ARRAY_NODE(NODE)                               \
-    do {                                                        \
-        assert(IS_ARRAY_NODE(NODE));                            \
-        PyHamtNode_Array *_node_ = (PyHamtNode_Array*)(NODE);   \
-        Py_ssize_t i = 0, count = 0;                            \
-        for (; i < _PyHamtNode_Array_size; i++) {               \
-            if (_node_->a_array[i] != NULL) {                   \
-                count++;                                        \
-            }                                                   \
-        }                                                       \
-        assert(count == _node_->a_count);                       \
-    } while (0);
+#define VALIDATE_ARRAY_NODE(NODE) \
+    do { _hamt_node_array_validate(NODE); } while (0);
 #else
 #define VALIDATE_ARRAY_NODE(NODE)
 #endif
-
-
-PyObject *
-_PyContext_NewForTests(void)
-{
-    return (PyObject *)hamt_new_empty();
-}
 
 
 /* Returns -1 on error */
@@ -601,7 +1023,7 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
             /* Copy existing key/value pairs from the current Bitmap
                node to the new Array node we've just created. */
             Py_ssize_t i, j;
-            for (i = 0, j = 0; i < _PyHamtNode_Array_size; i++) {
+            for (i = 0, j = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
                 if (((self->b_bitmap >> i) & 1) != 0) {
                     /* Ensure we don't accidentally override `jdx` element
                        we set few lines above.
@@ -1395,7 +1817,7 @@ hamt_node_array_new(Py_ssize_t count)
         }
     }
 
-    for (i = 0; i < _PyHamtNode_Array_size; i++) {
+    for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         node->a_array[i] = NULL;
     }
 
@@ -1420,7 +1842,7 @@ hamt_node_array_clone(PyHamtNode_Array *node)
     }
 
     /* Copy all elements from the current Array node to the new one. */
-    for (i = 0; i < _PyHamtNode_Array_size; i++) {
+    for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         Py_XINCREF(node->a_array[i]);
         clone->a_array[i] = node->a_array[i];
     }
@@ -1478,7 +1900,7 @@ hamt_node_array_assoc(PyHamtNode_Array *self,
 
         /* Copy all elements from the current Array node to the
            new one. */
-        for (i = 0; i < _PyHamtNode_Array_size; i++) {
+        for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
             Py_XINCREF(self->a_array[i]);
             new_node->a_array[i] = self->a_array[i];
         }
@@ -1594,7 +2016,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
             }
 
             Py_ssize_t new_i = 0;
-            for (uint32_t i = 0; i < _PyHamtNode_Array_size; i++) {
+            for (uint32_t i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
                 if (i == idx) {
                     /* Skip the node we are deleting. */
                     continue;
@@ -1693,7 +2115,7 @@ hamt_node_array_traverse(PyHamtNode_Array *self,
 
     Py_ssize_t i;
 
-    for (i = 0; i < _PyHamtNode_Array_size; i++) {
+    for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         Py_VISIT(self->a_array[i]);
     }
 
@@ -1710,7 +2132,7 @@ hamt_node_array_dealloc(PyHamtNode_Array *self)
     PyObject_GC_UnTrack(self);
     Py_TRASHCAN_SAFE_BEGIN(self)
 
-    for (i = 0; i < _PyHamtNode_Array_size; i++) {
+    for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         Py_XDECREF(self->a_array[i]);
     }
 
@@ -1745,7 +2167,7 @@ hamt_node_array_dump(PyHamtNode_Array *node,
         goto error;
     }
 
-    for (i = 0; i < _PyHamtNode_Array_size; i++) {
+    for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
         if (node->a_array[i] == NULL) {
             continue;
         }
@@ -1906,35 +2328,6 @@ hamt_node_dump(_PyHamtNode_BaseNode *node,
 /////////////////////////////////// Iterators: Machinery
 
 
-typedef enum {I_ITEM, I_END} hamt_iter_t;
-
-
-#define HAMT_MAX_TREE_DEPTH 7
-
-typedef struct {
-    /* HAMT is an immutable collection.  Iterators will hold a
-       strong reference to it, and every node in the HAMT has
-       strong references to its children.
-
-       So for iterators, we can implement zero allocations
-       and zero inc/dec ref depth-first iteration.
-
-       The state of the iteration will be stored in this struct.
-
-       - i_nodes: an array of seven pointers to tree nodes
-       - i_level: the current node in i_nodes
-       - i_pos: an array of positions within nodes in i_nodes.
-    */
-    _PyHamtNode_BaseNode *i_nodes[HAMT_MAX_TREE_DEPTH];
-    Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
-    int8_t i_level;
-} PyHamtIteratorState;
-
-
-static hamt_iter_t
-hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val);
-
-
 static void
 hamt_iterator_init(PyHamtIteratorState *iter, _PyHamtNode_BaseNode *root)
 {
@@ -2017,7 +2410,7 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
     PyHamtNode_Array *node = (PyHamtNode_Array *)(iter->i_nodes[level]);
     Py_ssize_t pos = iter->i_pos[level];
 
-    if (pos >= _PyHamtNode_Array_size) {
+    if (pos >= HAMT_ARRAY_NODE_SIZE) {
 #ifdef Py_DEBUG
         assert(iter->i_level >= 0);
         iter->i_nodes[iter->i_level] = NULL;
@@ -2026,7 +2419,7 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
         return hamt_iterator_next(iter, key, val);
     }
 
-    for (Py_ssize_t i = pos; i < _PyHamtNode_Array_size; i++) {
+    for (Py_ssize_t i = pos; i < HAMT_ARRAY_NODE_SIZE; i++) {
         if (node->a_array[i] != NULL) {
             iter->i_pos[level] = i + 1;
 
@@ -2073,167 +2466,7 @@ hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val)
 }
 
 
-/////////////////////////////////// Iterators: Shared Iterator Implementation
-
-
-typedef struct {
-    PyObject_HEAD
-    PyHamtObject *hi_obj;
-    PyHamtIteratorState hi_iter;
-    binaryfunc hi_yield;
-} PyHamtIterator;
-
-static void
-PyHamtIterator_dealloc(PyHamtIterator *it)
-{
-    PyObject_GC_UnTrack(it);
-    Py_CLEAR(it->hi_obj);
-    PyObject_GC_Del(it);
-}
-
-static int
-PyHamtIterator_traverse(PyHamtIterator *it, visitproc visit, void *arg)
-{
-    Py_VISIT(it->hi_obj);
-    return 0;
-}
-
-static PyObject *
-PyHamtIterator_iternext(PyHamtIterator *it)
-{
-    PyObject *key;
-    PyObject *val;
-    hamt_iter_t res = hamt_iterator_next(&it->hi_iter, &key, &val);
-
-    switch (res) {
-        case I_END:
-            PyErr_SetNone(PyExc_StopIteration);
-            return NULL;
-
-        case I_ITEM: {
-            return (*(it->hi_yield))(key, val);
-        }
-    }
-}
-
-static Py_ssize_t
-PyHamtIterator_len(PyHamtIterator *it)
-{
-    return it->hi_obj->h_count;
-}
-
-static PyMappingMethods PyHamtIterator_as_mapping = {
-    (lenfunc)PyHamtIterator_len,
-};
-
-static PyObject *
-PyHamtIterator_new(PyTypeObject *type, binaryfunc yield, PyHamtObject *o)
-{
-    PyHamtIterator *it = PyObject_GC_New(PyHamtIterator, type);
-    if (it == NULL) {
-        return NULL;
-    }
-
-    Py_INCREF(o);
-    it->hi_obj = o;
-    it->hi_yield = yield;
-
-    hamt_iterator_init(&it->hi_iter, o->h_root);
-
-    return (PyObject*)it;
-}
-
-#define ITERATOR_TYPE_SHARED_SLOTS                          \
-    .tp_basicsize = sizeof(PyHamtIterator),                 \
-    .tp_itemsize = 0,                                       \
-    .tp_as_mapping = &PyHamtIterator_as_mapping,            \
-    .tp_dealloc = (destructor)PyHamtIterator_dealloc,       \
-    .tp_getattro = PyObject_GenericGetAttr,                 \
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,    \
-    .tp_traverse = (traverseproc)PyHamtIterator_traverse,   \
-    .tp_iter = PyObject_SelfIter,                           \
-    .tp_iternext = (iternextfunc)PyHamtIterator_iternext,
-
-
-/////////////////////////////////// Iterators: Items
-
-
-static PyTypeObject PyHamtItems_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "items",
-    ITERATOR_TYPE_SHARED_SLOTS
-};
-
-static PyObject *
-hamt_iter_yield_items(PyObject *key, PyObject *val)
-{
-    PyObject *tup = PyTuple_New(2);
-    if (tup == NULL) {
-        return tup;
-    }
-
-    Py_INCREF(key);
-    PyTuple_SET_ITEM(tup, 0, key);
-    Py_INCREF(val);
-    PyTuple_SET_ITEM(tup, 1, val);
-
-    return tup;
-}
-
-static PyObject *
-hamt_iter_new_items(PyHamtObject *o)
-{
-    return PyHamtIterator_new(&PyHamtItems_Type, hamt_iter_yield_items, o);
-}
-
-
-/////////////////////////////////// Iterators: Keys
-
-
-static PyTypeObject PyHamtKeys_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "keys",
-    ITERATOR_TYPE_SHARED_SLOTS
-};
-
-static PyObject *
-hamt_iter_yield_keys(PyObject *key, PyObject *val)
-{
-    Py_INCREF(key);
-    return key;
-}
-
-static PyObject *
-hamt_iter_new_keys(PyHamtObject *o)
-{
-    return PyHamtIterator_new(&PyHamtKeys_Type, hamt_iter_yield_keys, o);
-}
-
-
-/////////////////////////////////// Iterators: Values
-
-
-static PyTypeObject PyHamtValues_Type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "values",
-    ITERATOR_TYPE_SHARED_SLOTS
-};
-
-static PyObject *
-hamt_iter_yield_values(PyObject *key, PyObject *val)
-{
-    Py_INCREF(val);
-    return val;
-}
-
-static PyObject *
-hamt_iter_new_values(PyHamtObject *o)
-{
-    return PyHamtIterator_new(&PyHamtValues_Type, hamt_iter_yield_values, o);
-}
-
-
-/////////////////////////////////// Hamt Object
+/////////////////////////////////// HAMT high-level functions
 
 
 static PyHamtObject *
@@ -2293,7 +2526,7 @@ hamt_without(PyHamtObject *o, PyObject *key)
         case W_ERROR:
             return NULL;
         case W_EMPTY:
-            return hamt_new_empty();
+            return hamt_new();
         case W_NOT_FOUND:
             Py_INCREF(o);
             return o;
@@ -2368,21 +2601,6 @@ hamt_eq(PyHamtObject *v, PyHamtObject *w)
     return 1;
 }
 
-static int
-hamt_clear(PyHamtObject *self)
-{
-    Py_CLEAR(self->h_root);
-    return 0;
-}
-
-
-static int
-hamt_traverse(PyHamtObject *self, visitproc visit, void *arg)
-{
-    Py_VISIT(self->h_root);
-    return 0;
-}
-
 static PyHamtObject *
 hamt_alloc(void)
 {
@@ -2397,7 +2615,7 @@ hamt_alloc(void)
 }
 
 static PyHamtObject *
-hamt_new_empty(void)
+hamt_new(void)
 {
     PyHamtObject *o = hamt_alloc();
     if (o == NULL) {
@@ -2412,24 +2630,6 @@ hamt_new_empty(void)
 
     o->h_count = 0;
     return o;
-}
-
-static PyObject *
-hamt_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-    return (PyObject*)hamt_new_empty();
-}
-
-
-static void
-hamt_dealloc(PyHamtObject *self)
-{
-    PyObject_GC_UnTrack(self);
-    if (self->h_weakreflist != NULL) {
-        PyObject_ClearWeakRefs((PyObject*)self);
-    }
-    (void)hamt_clear(self);
-    Py_TYPE(self)->tp_free(self);
 }
 
 #ifdef Py_DEBUG
@@ -2457,203 +2657,8 @@ error:
 #endif  /* Py_DEBUG */
 
 
-/////////////////////////////////// Hamt Methods
-
-
-static PyObject *
-hamt_py_richcompare(PyObject *v, PyObject *w, int op)
-{
-    if (!PyHamt_Check(v) || !PyHamt_Check(w) || (op != Py_EQ && op != Py_NE)) {
-        Py_RETURN_NOTIMPLEMENTED;
-    }
-
-    int res = hamt_eq((PyHamtObject *)v, (PyHamtObject *)w);
-    if (res < 0) {
-        return NULL;
-    }
-
-    if (op == Py_NE) {
-        res = !res;
-    }
-
-    if (res) {
-        Py_RETURN_TRUE;
-    }
-    else {
-        Py_RETURN_FALSE;
-    }
-}
-
-static PyObject *
-hamt_py_set(PyHamtObject *self, PyObject *args)
-{
-    PyObject *key;
-    PyObject *val;
-
-    if (!PyArg_UnpackTuple(args, "set", 2, 2, &key, &val)) {
-        return NULL;
-    }
-
-    return (PyObject *)hamt_assoc(self, key, val);
-}
-
-static PyObject *
-hamt_py_get(PyHamtObject *self, PyObject *args)
-{
-    PyObject *key;
-    PyObject *def = NULL;
-    PyObject *val = NULL;
-    hamt_find_t res;
-
-    if (!PyArg_UnpackTuple(args, "get", 1, 2, &key, &def))
-    {
-        return NULL;
-    }
-
-    res = hamt_find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            if (def == NULL) {
-                Py_RETURN_NONE;
-            }
-            Py_INCREF(def);
-            return def;
-    }
-}
-
-static int
-hamt_py_contains(PyHamtObject *self, PyObject *key)
-{
-    PyObject *val;
-    hamt_find_t res = hamt_find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return -1;
-        case F_FOUND:
-            return 1;
-        case F_NOT_FOUND:
-            return 0;
-    }
-}
-
-static PyObject *
-hamt_py_subscript(PyHamtObject *self, PyObject *key)
-{
-    PyObject *val;
-    hamt_find_t res = hamt_find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            PyErr_SetObject(PyExc_KeyError, key);
-            return NULL;
-    }
-}
-
-static PyObject *
-hamt_py_iter(PyHamtObject *self)
-{
-    return hamt_iter_new_keys(self);
-}
-
-static PyObject *
-hamt_py_delete(PyHamtObject *self, PyObject *key)
-{
-    return (PyObject *)hamt_without(self, key);
-}
-
-static PyObject *
-hamt_py_items(PyHamtObject *self, PyObject *args)
-{
-    return hamt_iter_new_items(self);
-}
-
-static PyObject *
-hamt_py_values(PyHamtObject *self, PyObject *args)
-{
-    return hamt_iter_new_values(self);
-}
-
-static PyObject *
-hamt_py_keys(PyHamtObject *self, PyObject *args)
-{
-    return hamt_iter_new_keys(self);
-}
-
-#ifdef Py_DEBUG
-static PyObject *
-hamt_py_dump(PyHamtObject *self, PyObject *args)
-{
-    return hamt_dump(self);
-}
-#endif
-
-static Py_ssize_t
-hamt_py_len(PyHamtObject *self)
-{
-    return self->h_count;
-}
-
-static PyMethodDef PyHamt_methods[] = {
-    {"set", (PyCFunction)hamt_py_set, METH_VARARGS, NULL},
-    {"get", (PyCFunction)hamt_py_get, METH_VARARGS, NULL},
-    {"delete", (PyCFunction)hamt_py_delete, METH_O, NULL},
-    {"items", (PyCFunction)hamt_py_items, METH_NOARGS, NULL},
-    {"keys", (PyCFunction)hamt_py_keys, METH_NOARGS, NULL},
-    {"values", (PyCFunction)hamt_py_values, METH_NOARGS, NULL},
-#ifdef Py_DEBUG
-    {"__dump__", (PyCFunction)hamt_py_dump, METH_NOARGS, NULL},
-#endif
-    {NULL, NULL}
-};
-
-static PySequenceMethods PyHamt_as_sequence = {
-    0,                              /* sq_length */
-    0,                              /* sq_concat */
-    0,                              /* sq_repeat */
-    0,                              /* sq_item */
-    0,                              /* sq_slice */
-    0,                              /* sq_ass_item */
-    0,                              /* sq_ass_slice */
-    (objobjproc)hamt_py_contains,   /* sq_contains */
-    0,                              /* sq_inplace_concat */
-    0,                              /* sq_inplace_repeat */
-};
-
-static PyMappingMethods PyHamt_as_mapping = {
-    (lenfunc)hamt_py_len,           /* mp_length */
-    (binaryfunc)hamt_py_subscript,  /* mp_subscript */
-};
-
-
 ///////////////////////////////////
 
-
-PyTypeObject PyHamt_Type = {
-    PyVarObject_HEAD_INIT(&PyType_Type, 0)
-    "hamt",
-    sizeof(PyHamtObject),
-    .tp_methods = PyHamt_methods,
-    .tp_as_mapping = &PyHamt_as_mapping,
-    .tp_as_sequence = &PyHamt_as_sequence,
-    .tp_iter = (getiterfunc)hamt_py_iter,
-    .tp_dealloc = (destructor)hamt_dealloc,
-    .tp_getattro = PyObject_GenericGetAttr,
-    .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,
-    .tp_richcompare = hamt_py_richcompare,
-    .tp_traverse = (traverseproc)hamt_traverse,
-    .tp_clear = (inquiry)hamt_clear,
-    .tp_new = hamt_tp_new,
-    .tp_weaklistoffset = offsetof(PyHamtObject, h_weakreflist),
-};
 
 PyTypeObject _PyHamt_ArrayNode_Type = {
     PyVarObject_HEAD_INIT(&PyType_Type, 0)
