@@ -86,6 +86,14 @@ struct _pycontextvarobject {
 };
 
 
+struct _pycontexttokenobject {
+    PyObject_HEAD
+    PyContextVar *tok_var;
+    PyObject *tok_oldval;
+    int tok_used;
+};
+
+
 PyAPI_DATA(PyTypeObject) _PyHamt_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_ArrayNode_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_BitmapNode_Type;

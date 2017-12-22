@@ -63,5 +63,13 @@ PyInit__contextvars(void)
         return NULL;
     }
 
+    Py_INCREF(&PyContextToken_Type);
+    if (PyModule_AddObject(m, "Token",
+                           (PyObject *)&PyContextToken_Type) < 0)
+    {
+        Py_DECREF(&PyContextToken_Type);
+        return NULL;
+    }
+
     return m;
 }
