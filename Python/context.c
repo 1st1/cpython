@@ -59,14 +59,13 @@ _PyContext_NewHamtForTests(void)
 PyObject *
 PyContextVar_Get(PyContextVar *var, PyObject *def)
 {
-    PyThreadState *ts = PyThreadState_Get();
-
     if (!PyContextVar_CheckExact(var)) {
         PyErr_SetString(
             PyExc_TypeError, "an instance of ContextVar was expected");
         return NULL;
     }
 
+    PyThreadState *ts = PyThreadState_Get();
     if (ts->contextvars == NULL) {
         goto not_found;
     }
