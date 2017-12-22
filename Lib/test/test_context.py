@@ -1,4 +1,5 @@
 import contextvars
+import functools
 import gc
 import random
 import unittest
@@ -10,7 +11,16 @@ except ImportError:
     hamt = None
 
 
-class ContextVarTest(unittest.TestCase):
+def isolated_context(func):
+    """Needed to make reftracking test mode work."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        ctx = contextvars.Context()
+        return ctx.run(func, *args, **kwargs)
+    return wrapper
+
+
+class ContextTest(unittest.TestCase):
     def test_context_var_new_1(self):
         with self.assertRaisesRegex(TypeError, 'takes exactly 1'):
             contextvars.ContextVar()
@@ -21,7 +31,7 @@ class ContextVarTest(unittest.TestCase):
         c = contextvars.ContextVar('a')
         self.assertNotEqual(hash(c), hash('a'))
 
-    def test_context_repr_1(self):
+    def test_context_var_repr_1(self):
         c = contextvars.ContextVar('a')
         self.assertIn('a', repr(c))
 
@@ -33,6 +43,59 @@ class ContextVarTest(unittest.TestCase):
         lst.append(c)
         self.assertIn('...', repr(c))
         self.assertIn('...', repr(lst))
+
+    def test_context_run_1(self):
+        ctx = contextvars.Context()
+
+        with self.assertRaisesRegex(TypeError, 'missing 1 required'):
+            ctx.run()
+
+    @isolated_context
+    def test_context_run_2(self):
+        ctx1 = contextvars.Context()
+        ctx2 = contextvars.Context()
+        var = contextvars.ContextVar('var')
+
+        def func2():
+            self.assertIsNone(var.get(None))
+
+        def func1():
+            self.assertIsNone(var.get(None))
+            var.set('spam')
+            ctx2.run(func2)
+            self.assertEqual(var.get(None), 'spam')
+
+        ctx1.run(func1)
+
+    def test_context_run_3(self):
+        ctx = contextvars.Context()
+        var = contextvars.ContextVar('var')
+
+        def func():
+            self.assertIsNone(var.get(None))
+            var.set('spam')
+            1 / 0
+
+        with self.assertRaises(ZeroDivisionError):
+            ctx.run(func)
+
+        self.assertIsNone(var.get(None))
+
+    @isolated_context
+    def test_context_getset_1(self):
+        c = contextvars.ContextVar('c')
+        with self.assertRaises(LookupError):
+            c.get()
+
+        self.assertIsNone(c.get(None))
+
+        c.set(42)
+        self.assertEqual(c.get(), 42)
+        self.assertEqual(c.get(None), 42)
+
+        c.set('spam')
+        self.assertEqual(c.get(), 'spam')
+        self.assertEqual(c.get(None), 'spam')
 
 
 # HAMT Tests

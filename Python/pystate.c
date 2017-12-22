@@ -311,6 +311,8 @@ new_threadstate(PyInterpreterState *interp, int init)
         tstate->async_gen_firstiter = NULL;
         tstate->async_gen_finalizer = NULL;
 
+        tstate->contextvars = NULL;
+
         if (init)
             _PyThreadState_Init(tstate);
 

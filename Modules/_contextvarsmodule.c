@@ -23,13 +23,17 @@ PyInit__contextvars(void)
     }
 
     Py_INCREF(&PyContext_Type);
-    if (PyModule_AddObject(m, "Context", (PyObject *)&PyContext_Type) < 0) {
+    if (PyModule_AddObject(m, "Context",
+                           (PyObject *)&PyContext_Type) < 0)
+    {
         Py_DECREF(&PyContext_Type);
         return NULL;
     }
 
     Py_INCREF(&PyContextVar_Type);
-    if (PyModule_AddObject(m, "ContextVar", (PyObject *)&PyContextVar_Type) < 0) {
+    if (PyModule_AddObject(m, "ContextVar",
+                           (PyObject *)&PyContextVar_Type) < 0)
+    {
         Py_DECREF(&PyContextVar_Type);
         return NULL;
     }
