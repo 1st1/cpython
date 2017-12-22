@@ -4441,7 +4441,7 @@ test_pythread_tss_key_state(PyObject *self, PyObject *args)
 static PyObject*
 new_hamt(PyObject *self, PyObject *args)
 {
-    return _PyContext_NewForTests();
+    return _PyContext_NewHamtForTests();
 }
 
 
