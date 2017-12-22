@@ -71,6 +71,13 @@ typedef struct {
 } PyHamtIterator;
 
 
+struct _pycontextobject {
+    PyObject_HEAD
+    PyHamtObject *ctx_vars;
+    PyObject *ctx_weakreflist;
+};
+
+
 PyAPI_DATA(PyTypeObject) _PyHamt_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_ArrayNode_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_BitmapNode_Type;
