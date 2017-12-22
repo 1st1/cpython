@@ -26,6 +26,7 @@ PyAPI_FUNC(PyContext *) PyContext_New(void);
 PyAPI_FUNC(PyContext *) PyContext_Get(void);
 
 
+PyAPI_FUNC(PyContextVar *) PyContextVar_New(PyObject *, PyObject *);
 PyAPI_FUNC(PyObject *) PyContextVar_Get(PyContextVar *, PyObject *);
 PyAPI_FUNC(PyContextToken *) PyContextVar_Set(PyContextVar *, PyObject *);
 PyAPI_FUNC(int) PyContextVar_Reset(PyContextVar *, PyContextToken *);

@@ -63,6 +63,9 @@ context_new(PyHamtObject *vars);
 static PyContextToken *
 token_new(PyContextVar *var, PyObject *val);
 
+static PyContextVar *
+contextvar_new(PyObject *name, PyObject *def);
+
 static int
 contextvar_set(PyContextVar *var, PyObject *val);
 
@@ -89,6 +92,13 @@ PyContext_Get(void)
 {
     PyThreadState *ts = PyThreadState_Get();
     return context_new((PyHamtObject*)ts->contextvars);
+}
+
+
+PyContextVar *
+PyContextVar_New(PyObject *name, PyObject *def)
+{
+    return contextvar_new(name, def);
 }
 
 
@@ -525,13 +535,6 @@ contextvar_del(PyContextVar *var)
     return 0;
 }
 
-
-/*[clinic input]
-class _contextvars.ContextVar "PyContextVar *" "&PyContextVar_Type"
-[clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=445da935fa8883c3]*/
-
-
 static Py_hash_t
 contextvar_generate_hash(void *addr, PyObject *name)
 {
@@ -558,7 +561,42 @@ contextvar_generate_hash(void *addr, PyObject *name)
     return res == -1 ? -2 : res;
 }
 
-// static PyObject *
+static PyContextVar *
+contextvar_new(PyObject *name, PyObject *def)
+{
+    if (!PyUnicode_Check(name)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "context variable name must be a str");
+        return NULL;
+    }
+
+    PyContextVar *var = PyObject_GC_New(PyContextVar, &PyContextVar_Type);
+    if (var == NULL) {
+        return NULL;
+    }
+
+    var->var_hash = contextvar_generate_hash(var, name);
+    if (var->var_hash == -1) {
+        Py_DECREF(var);
+        return NULL;
+    }
+
+    Py_INCREF(name);
+    var->var_name = name;
+
+    Py_XINCREF(def);
+    var->var_default = def;
+
+    PyObject_GC_Track(var);
+    return var;
+}
+
+
+/*[clinic input]
+class _contextvars.ContextVar "PyContextVar *" "&PyContextVar_Type"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=445da935fa8883c3]*/
+
 
 static PyObject *
 contextvar_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
@@ -573,31 +611,7 @@ contextvar_tp_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         return NULL;
     }
 
-    if (!PyUnicode_Check(name)) {
-        PyErr_SetString(PyExc_TypeError,
-                        "context variable name must be a str");
-        return NULL;
-    }
-
-    PyContextVar *o = PyObject_GC_New(PyContextVar, &PyContextVar_Type);
-    if (o == NULL) {
-        return NULL;
-    }
-
-    o->var_hash = contextvar_generate_hash(o, name);
-    if (o->var_hash == -1) {
-        Py_DECREF(o);
-        return NULL;
-    }
-
-    Py_INCREF(name);
-    o->var_name = name;
-
-    Py_XINCREF(def);
-    o->var_default = def;
-
-    PyObject_GC_Track(o);
-    return (PyObject*)o;
+    return (PyObject *)contextvar_new(name, def);
 }
 
 static int

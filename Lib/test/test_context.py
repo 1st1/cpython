@@ -181,6 +181,15 @@ class ContextTest(unittest.TestCase):
         c.reset(t0)
         self.assertIsNone(c.get(None))
 
+    @isolated_context
+    def test_context_getset_2(self):
+        v1 = contextvars.ContextVar('v1')
+        v2 = contextvars.ContextVar('v2')
+
+        t1 = v1.set(42)
+        with self.assertRaisesRegex(ValueError, 'by a different'):
+            v2.reset(t1)
+
 
 # HAMT Tests
 
