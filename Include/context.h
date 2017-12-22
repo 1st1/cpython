@@ -6,7 +6,7 @@ extern "C" {
 
 
 /* This method is exposed only for CPython tests. Don not use it. */
-PyAPI_FUNC(PyObject *) _PyContext_NewForTests(void);
+PyAPI_FUNC(PyObject *) _PyContext_NewHamtForTests(void);
 
 
 #ifdef __cplusplus

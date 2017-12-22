@@ -1808,13 +1808,13 @@ _Py_ReadyTypes(void)
     if (PyType_Ready(&_PyCoroWrapper_Type) < 0)
         Py_FatalError("Can't initialize coroutine wrapper type");
 
-    if ((PyType_Ready(&PyHamt_Type) < 0) ||
+    if ((PyType_Ready(&_PyHamt_Type) < 0) ||
         (PyType_Ready(&_PyHamt_ArrayNode_Type) < 0) ||
         (PyType_Ready(&_PyHamt_BitmapNode_Type) < 0) ||
         (PyType_Ready(&_PyHamt_CollisionNode_Type) < 0) ||
-        (PyType_Ready(&PyHamtKeys_Type) < 0) ||
-        (PyType_Ready(&PyHamtValues_Type) < 0) ||
-        (PyType_Ready(&PyHamtItems_Type) < 0))
+        (PyType_Ready(&_PyHamtKeys_Type) < 0) ||
+        (PyType_Ready(&_PyHamtValues_Type) < 0) ||
+        (PyType_Ready(&_PyHamtItems_Type) < 0))
     {
         Py_FatalError("Can't initialize hamt type");
     }
