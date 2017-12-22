@@ -1,3 +1,4 @@
+import contextvars
 import gc
 import random
 import unittest
@@ -7,6 +8,34 @@ try:
     from _testcapi import hamt
 except ImportError:
     hamt = None
+
+
+class ContextVarTest(unittest.TestCase):
+    def test_context_var_new_1(self):
+        with self.assertRaisesRegex(TypeError, 'takes exactly 1'):
+            contextvars.ContextVar()
+
+        with self.assertRaisesRegex(TypeError, 'must be a str'):
+            contextvars.ContextVar(1)
+
+        c = contextvars.ContextVar('a')
+        self.assertNotEqual(hash(c), hash('a'))
+
+    def test_context_repr_1(self):
+        c = contextvars.ContextVar('a')
+        self.assertIn('a', repr(c))
+
+        c = contextvars.ContextVar('a', default=123)
+        self.assertIn('123', repr(c))
+
+        lst = []
+        c = contextvars.ContextVar('a', default=lst)
+        lst.append(c)
+        self.assertIn('...', repr(c))
+        self.assertIn('...', repr(lst))
+
+
+# HAMT Tests
 
 
 class HashKey:
@@ -176,8 +205,8 @@ class HamtTest(unittest.TestCase):
         self.assertEqual(len(h5), 3)
 
     def test_hamt_stress(self):
-        COLLECTION_SIZE = 10000
-        TEST_ITERS_EVERY = 997
+        COLLECTION_SIZE = 7000
+        TEST_ITERS_EVERY = 647
         CRASH_HASH_EVERY = 97
         CRASH_EQ_EVERY = 11
         RUN_XTIMES = 3

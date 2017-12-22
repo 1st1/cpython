@@ -78,6 +78,14 @@ struct _pycontextobject {
 };
 
 
+struct _pycontextvarobject {
+    PyObject_HEAD
+    PyObject *var_name;
+    PyObject *var_default;
+    Py_hash_t var_hash;
+};
+
+
 PyAPI_DATA(PyTypeObject) _PyHamt_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_ArrayNode_Type;
 PyAPI_DATA(PyTypeObject) _PyHamt_BitmapNode_Type;

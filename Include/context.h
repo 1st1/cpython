@@ -15,8 +15,12 @@ PyAPI_DATA(PyTypeObject) PyContext_Type;
 typedef struct _pycontextobject PyContext;
 
 
-#define PyContext_Check(o) (Py_TYPE(o) == &PyContext_Type)
+PyAPI_DATA(PyTypeObject) PyContextVar_Type;
+typedef struct _pycontextvarobject PyContextVar;
 
+
+#define PyContext_CheckExact(o) (Py_TYPE(o) == &PyContext_Type)
+#define PyContextVar_CheckExact(o) (Py_TYPE(o) == &PyContextVar_Type)
 
 
 #endif /* !Py_LIMITED_API */
