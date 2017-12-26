@@ -4,6 +4,7 @@
 #include "Python.h"
 #include "internal/pystate.h"
 #include "internal/context.h"
+#include "internal/hamt.h"
 #include "frameobject.h"
 
 #ifdef __cplusplus
