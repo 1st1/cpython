@@ -91,7 +91,15 @@ PyContext *
 PyContext_Get(void)
 {
     PyThreadState *ts = PyThreadState_Get();
-    return context_new((PyHamtObject *)ts->contextvars);
+    PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
+    if (vars == NULL) {
+        vars = hamt_new();
+        if (vars == NULL) {
+            return NULL;
+        }
+        ts->contextvars = (PyObject *)vars;
+    }
+    return context_new(vars);
 }
 
 
@@ -262,12 +270,27 @@ class _contextvars.Context "PyContext *" "&PyContext_Type"
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdf87f8e0cb580e8]*/
 
 
+#define FREELIST_CONTEXT_MAXLEN 255
+static PyContext *ctx_freelist = NULL;
+static Py_ssize_t ctx_freelist_len = 0;
+
+
 static PyContext *
 context_new(PyHamtObject *vars)
 {
-    PyContext *ctx = PyObject_GC_New(PyContext, &PyContext_Type);
-    if (ctx == NULL) {
-        return NULL;
+    PyContext *ctx;
+    if (ctx_freelist_len) {
+        ctx_freelist_len--;
+        ctx = ctx_freelist;
+        ctx_freelist = (PyContext *)ctx->ctx_weakreflist;
+        ctx->ctx_weakreflist = NULL;
+        _Py_NewReference((PyObject *)ctx);
+    }
+    else {
+        ctx = PyObject_GC_New(PyContext, &PyContext_Type);
+        if (ctx == NULL) {
+            return NULL;
+        }
     }
 
     if (vars == NULL) {
@@ -338,7 +361,15 @@ context_tp_dealloc(PyContext *self)
         PyObject_ClearWeakRefs((PyObject*)self);
     }
     (void)context_tp_clear(self);
-    Py_TYPE(self)->tp_free(self);
+
+    if (ctx_freelist_len < FREELIST_CONTEXT_MAXLEN) {
+        ctx_freelist_len++;
+        self->ctx_weakreflist = (PyObject *)ctx_freelist;
+        ctx_freelist = self;
+    }
+    else {
+        Py_TYPE(self)->tp_free(self);
+    }
 }
 
 static PyObject *
