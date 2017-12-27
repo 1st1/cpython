@@ -29,10 +29,43 @@ PyAPI_FUNC(int) PyContext_Enter(PyContext *);
 PyAPI_FUNC(int) PyContext_Exit(PyContext *);
 
 
-PyAPI_FUNC(PyContextVar *) PyContextVar_New(const char *, PyObject *);
-PyAPI_FUNC(int) PyContextVar_Get(PyContextVar *, PyObject *, PyObject **);
-PyAPI_FUNC(PyContextToken *) PyContextVar_Set(PyContextVar *, PyObject *);
-PyAPI_FUNC(int) PyContextVar_Reset(PyContextVar *, PyContextToken *);
+/* Create a new context variable.
+
+   default_value can be NULL.
+*/
+PyAPI_FUNC(PyContextVar *) PyContextVar_New(
+    const char *name, PyObject *default_value);
+
+
+/* Get a value for the variable.
+
+   Returns -1 if an error occurred during lookup.
+
+   Returns 0 if value either was or was not found.
+
+   If value was found, *value will point to it.
+   If not, it will point to:
+
+   - default_value, if not NULL;
+   - the default value of "var", if not NULL;
+   - NULL.
+*/
+PyAPI_FUNC(int) PyContextVar_Get(
+    PyContextVar *var, PyObject *default_value, PyObject **value);
+
+
+/* Set a new value for the variable.
+   Returns NULL if an error occurs.
+*/
+PyAPI_FUNC(PyContextToken *) PyContextVar_Set(
+    PyContextVar *var, PyObject *value);
+
+
+/* Reset a variable to its previous value.
+   Returns 0 on sucess, -1 on error.
+*/
+PyAPI_FUNC(int) PyContextVar_Reset(
+    PyContextVar *var, PyContextToken *token);
 
 
 /* This method is exposed only for CPython tests. Don not use it. */
