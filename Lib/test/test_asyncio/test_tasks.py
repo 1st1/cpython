@@ -2210,13 +2210,20 @@ class BaseTaskTests:
                 cvar.set('something else')
 
             self.assertEqual(cvar.get(), 'nope')
-            fut = self.new_future(loop)
-            fut.add_done_callback(fut_on_done)
 
-            cvar.set('yes')
-            loop.call_soon(fut.set_result, None)
-            await fut
-            self.assertEqual(cvar.get(), 'yes')
+            for j in range(2):
+                fut = self.new_future(loop)
+                fut.add_done_callback(fut_on_done)
+                cvar.set(f'yes{j}')
+                loop.call_soon(fut.set_result, None)
+                await fut
+                self.assertEqual(cvar.get(), f'yes{j}')
+
+                for i in range(3):
+                    # Test that task passed its context to add_done_callback:
+                    cvar.set(f'yes{i}-{j}')
+                    await asyncio.sleep(0.001, loop=loop)
+                    self.assertEqual(cvar.get(), f'yes{i}-{j}')
 
         loop = asyncio.new_event_loop()
         try:
