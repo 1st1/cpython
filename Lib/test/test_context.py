@@ -31,6 +31,9 @@ class ContextTest(unittest.TestCase):
         c = contextvars.ContextVar('a')
         self.assertNotEqual(hash(c), hash('a'))
 
+    def test_context_var_new_2(self):
+        self.assertIsNone(contextvars.ContextVar[int])
+
     def test_context_var_repr_1(self):
         c = contextvars.ContextVar('a')
         self.assertIn('a', repr(c))
