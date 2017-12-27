@@ -2,42 +2,16 @@
 #define Py_INTERNAL_HAMT_H
 
 
-#define HAMT_ARRAY_NODE_SIZE 32
-#define HAMT_MAX_TREE_DEPTH 7
+#define _Py_HAMT_MAX_TREE_DEPTH 7
 
 
 #define PyHamt_Check(o) (Py_TYPE(o) == &_PyHamt_Type)
 
 
-/* Abstract tree node.  We use it mostly to have a typed pointer
-   to a tree node. */
+/* Abstract tree node. */
 typedef struct {
-    PyObject_VAR_HEAD
+    PyObject_HEAD
 } PyHamtNode;
-
-
-/* Array HAMT node. */
-typedef struct {
-    PyHamtNode _a_base;
-    PyHamtNode *a_array[HAMT_ARRAY_NODE_SIZE];
-    Py_ssize_t a_count;
-} PyHamtNode_Array;
-
-
-/* Bitmap HAMT node. */
-typedef struct {
-    PyHamtNode _b_base;
-    uint32_t b_bitmap;
-    PyObject *b_array[1];
-} PyHamtNode_Bitmap;
-
-
-/* Collision HAMT node. */
-typedef struct {
-    PyHamtNode _c_base;
-    int32_t c_hash;
-    PyObject *c_array[1];
-} PyHamtNode_Collision;
 
 
 /* An HAMT immutable mapping collection. */
@@ -62,8 +36,8 @@ typedef struct {
    - i_pos: an array of positions within nodes in i_nodes.
 */
 typedef struct {
-    PyHamtNode *i_nodes[HAMT_MAX_TREE_DEPTH];
-    Py_ssize_t i_pos[HAMT_MAX_TREE_DEPTH];
+    PyHamtNode *i_nodes[_Py_HAMT_MAX_TREE_DEPTH];
+    Py_ssize_t i_pos[_Py_HAMT_MAX_TREE_DEPTH];
     int8_t i_level;
 } PyHamtIteratorState;
 
