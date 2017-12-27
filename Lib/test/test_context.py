@@ -180,9 +180,29 @@ class ContextTest(unittest.TestCase):
         c.reset(t)  # This should be a nop
         self.assertEqual(c.get(), 'spam2')
 
+        ctx1 = contextvars.copy_context()
+        self.assertIn(c, ctx1)
+
         c.reset(t0)
         c.reset(t0)
         self.assertIsNone(c.get(None))
+
+        self.assertIn(c, ctx1)
+        self.assertEqual(ctx1[c], 'spam2')
+        self.assertEqual(ctx1.get(c, 'aa'), 'spam2')
+        self.assertEqual(len(ctx1), 1)
+        self.assertEqual(list(ctx1.items()), [(c, 'spam2')])
+        self.assertEqual(list(ctx1.values()), ['spam2'])
+        self.assertEqual(list(ctx1.keys()), [c])
+        self.assertEqual(list(ctx1), [c])
+
+        ctx2 = contextvars.copy_context()
+        self.assertNotIn(c, ctx2)
+        with self.assertRaises(KeyError):
+            ctx2[c]
+        self.assertEqual(ctx2.get(c, 'aa'), 'aa')
+        self.assertEqual(len(ctx2), 0)
+        self.assertEqual(list(ctx2), [])
 
     @isolated_context
     def test_context_getset_2(self):
