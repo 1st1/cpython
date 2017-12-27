@@ -29,8 +29,8 @@ PyAPI_FUNC(int) PyContext_Enter(PyContext *);
 PyAPI_FUNC(int) PyContext_Exit(PyContext *);
 
 
-PyAPI_FUNC(PyContextVar *) PyContextVar_New(PyObject *, PyObject *);
-PyAPI_FUNC(PyObject *) PyContextVar_Get(PyContextVar *, PyObject *);
+PyAPI_FUNC(PyContextVar *) PyContextVar_New(const char *, PyObject *);
+PyAPI_FUNC(int) PyContextVar_Get(PyContextVar *, PyObject *, PyObject **);
 PyAPI_FUNC(PyContextToken *) PyContextVar_Set(PyContextVar *, PyObject *);
 PyAPI_FUNC(int) PyContextVar_Reset(PyContextVar *, PyContextToken *);
 

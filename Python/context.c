@@ -114,14 +114,18 @@ PyContext_Exit(PyContext *ctx)
 
 
 PyContextVar *
-PyContextVar_New(PyObject *name, PyObject *def)
+PyContextVar_New(const char *name, PyObject *def)
 {
-    return contextvar_new(name, def);
+    PyObject *pyname = PyUnicode_FromString(name);
+    if (pyname == NULL) {
+        return NULL;
+    }
+    return contextvar_new(pyname, def);
 }
 
 
-PyObject *
-PyContextVar_Get(PyContextVar *var, PyObject *def)
+int
+PyContextVar_Get(PyContextVar *var, PyObject *def, PyObject **val)
 {
     assert(PyContextVar_CheckExact(var));
 
@@ -134,41 +138,41 @@ PyContextVar_Get(PyContextVar *var, PyObject *def)
             var->var_cached_tsid == ts->id &&
             var->var_cached_tsver == ts->contextvars_stack_ver)
     {
-        Py_INCREF(var->var_cached);
-        return var->var_cached;
+        *val = var->var_cached;
+        return 0;
     }
 
     assert(PyHamt_Check(ts->contextvars));
     PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
 
-    PyObject *val = NULL;
-    int res = _PyHamt_Find(vars, (PyObject*)var, &val);
+    PyObject *found = NULL;
+    int res = _PyHamt_Find(vars, (PyObject*)var, &found);
     if (res < 0) {
-        return NULL;
+        return -1;
     }
     if (res == 1) {
-        var->var_cached = val;  /* borrow */
+        var->var_cached = found;  /* borrow */
         var->var_cached_tsid = ts->id;
         var->var_cached_tsver = ts->contextvars_stack_ver;
 
-        Py_INCREF(val);
-        return val;
+        *val = found;
+        return 0;
     }
 
 not_found:
     if (def == NULL) {
         if (var->var_default != NULL) {
-            Py_INCREF(var->var_default);
-            return var->var_default;
+            *val = var->var_default;
+            return 0;
         }
 
-        PyErr_SetObject(PyExc_LookupError, (PyObject*) var);
-        return NULL;
+        *val = NULL;
+        return 0;
     }
     else {
-        Py_INCREF(def);
-        return def;
-    }
+        *val = def;
+        return 0;
+   }
 }
 
 
@@ -837,7 +841,19 @@ _contextvars_ContextVar_get_impl(PyContextVar *self, PyObject *default_value)
             PyExc_TypeError, "an instance of ContextVar was expected");
         return NULL;
     }
-    return PyContextVar_Get(self, default_value);
+
+    PyObject *val;
+    if (PyContextVar_Get(self, default_value, &val) < 0) {
+        return NULL;
+    }
+
+    if (val == NULL) {
+        PyErr_SetObject(PyExc_LookupError, (PyObject *)self);
+        return NULL;
+    }
+
+    Py_INCREF(val);
+    return val;
 }
 
 /*[clinic input]
