@@ -123,11 +123,7 @@ PyContextVar_New(PyObject *name, PyObject *def)
 PyObject *
 PyContextVar_Get(PyContextVar *var, PyObject *def)
 {
-    if (!PyContextVar_CheckExact(var)) {
-        PyErr_SetString(
-            PyExc_TypeError, "an instance of ContextVar was expected");
-        return NULL;
-    }
+    assert(PyContextVar_CheckExact(var));
 
     PyThreadState *ts = PyThreadState_Get();
     if (ts->contextvars == NULL) {
@@ -836,6 +832,11 @@ static PyObject *
 _contextvars_ContextVar_get_impl(PyContextVar *self, PyObject *default_value)
 /*[clinic end generated code: output=0746bd0aa2ced7bf input=8d002b02eebbb247]*/
 {
+    if (!PyContextVar_CheckExact(self)) {
+        PyErr_SetString(
+            PyExc_TypeError, "an instance of ContextVar was expected");
+        return NULL;
+    }
     return PyContextVar_Get(self, default_value);
 }
 
