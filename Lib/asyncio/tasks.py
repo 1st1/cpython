@@ -97,7 +97,7 @@ class Task(futures._PyFuture):  # Inherit Python Task implementation
         self._must_cancel = False
         self._fut_waiter = None
         self._coro = coro
-        self._context = contextvars.get_context()
+        self._context = contextvars.copy_context()
 
         self._loop.call_soon(self._step, context=self._context)
         _register_task(self)

@@ -9,21 +9,21 @@ module _contextvars
 
 
 /*[clinic input]
-_contextvars.get_context
+_contextvars.copy_context
 [clinic start generated code]*/
 
 static PyObject *
-_contextvars_get_context_impl(PyObject *module)
-/*[clinic end generated code: output=9f4603016762a60d input=b5f1ecf680c1a26e]*/
+_contextvars_copy_context_impl(PyObject *module)
+/*[clinic end generated code: output=1fcd5da7225c4fa9 input=89bb9ae485888440]*/
 {
-    return (PyObject *)PyContext_Get();
+    return (PyObject *)PyContext_Copy();
 }
 
 
 PyDoc_STRVAR(module_doc, "Context Variables");
 
 static PyMethodDef _contextvars_methods[] = {
-    _CONTEXTVARS_GET_CONTEXT_METHODDEF
+    _CONTEXTVARS_COPY_CONTEXT_METHODDEF
     {NULL, NULL}
 };
 
