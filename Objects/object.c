@@ -4,7 +4,6 @@
 #include "Python.h"
 #include "internal/pystate.h"
 #include "internal/context.h"
-#include "internal/hamt.h"
 #include "frameobject.h"
 
 #ifdef __cplusplus
@@ -1808,25 +1807,6 @@ _Py_ReadyTypes(void)
 
     if (PyType_Ready(&_PyCoroWrapper_Type) < 0)
         Py_FatalError("Can't initialize coroutine wrapper type");
-
-    if ((PyType_Ready(&_PyHamt_Type) < 0) ||
-        (PyType_Ready(&_PyHamt_ArrayNode_Type) < 0) ||
-        (PyType_Ready(&_PyHamt_BitmapNode_Type) < 0) ||
-        (PyType_Ready(&_PyHamt_CollisionNode_Type) < 0) ||
-        (PyType_Ready(&_PyHamtKeys_Type) < 0) ||
-        (PyType_Ready(&_PyHamtValues_Type) < 0) ||
-        (PyType_Ready(&_PyHamtItems_Type) < 0))
-    {
-        Py_FatalError("Can't initialize hamt types");
-    }
-
-    if ((PyType_Ready(&PyContext_Type) < 0) ||
-        (PyType_Ready(&PyContextVar_Type) < 0) ||
-        (PyType_Ready(&PyContextToken_Type) < 0))
-    {
-        Py_FatalError("Can't initialize Context types");
-    }
-
 }
 
 

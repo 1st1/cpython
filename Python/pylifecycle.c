@@ -760,6 +760,9 @@ _Py_InitializeCore(const _PyCoreConfig *core_config)
         return _Py_INIT_ERR("can't initialize warnings");
     }
 
+    if (!_PyContext_Init())
+        return _Py_INIT_ERR("can't init context");
+
     /* This call sets up builtin and frozen import support */
     if (!interp->core_config._disable_importlib) {
         err = initimport(interp, sysmod);
@@ -1178,8 +1181,7 @@ Py_FinalizeEx(void)
     _Py_HashRandomization_Fini();
     _PyArg_Fini();
     PyAsyncGen_Fini();
-    PyHamt_Fini();
-    PyContext_Fini();
+    _PyContext_Fini();
 
     /* Cleanup Unicode implementation */
     _PyUnicode_Fini();

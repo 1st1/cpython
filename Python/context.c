@@ -6,6 +6,11 @@
 #include "internal/hamt.h"
 
 
+#define FREELIST_CONTEXT_MAXLEN 255
+static PyContext *ctx_freelist = NULL;
+static Py_ssize_t ctx_freelist_len = 0;
+
+
 #include "clinic/context.c.h"
 /*[clinic input]
 module _contextvars
@@ -219,19 +224,6 @@ PyContextVar_Reset(PyContextVar *var, PyContextToken *tok)
 }
 
 
-/////////////////////////// PyContext
-
-/*[clinic input]
-class _contextvars.Context "PyContext *" "&PyContext_Type"
-[clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdf87f8e0cb580e8]*/
-
-
-#define FREELIST_CONTEXT_MAXLEN 255
-static PyContext *ctx_freelist = NULL;
-static Py_ssize_t ctx_freelist_len = 0;
-
-
 int
 PyContext_ClearFreeList(void)
 {
@@ -248,10 +240,37 @@ PyContext_ClearFreeList(void)
 
 
 void
-PyContext_Fini(void)
+_PyContext_Fini(void)
 {
     (void)PyContext_ClearFreeList();
+    (void)_PyHamt_Fini();
 }
+
+
+int
+_PyContext_Init(void)
+{
+    if (!_PyHamt_Init()) {
+        return 0;
+    }
+
+    if ((PyType_Ready(&PyContext_Type) < 0) ||
+        (PyType_Ready(&PyContextVar_Type) < 0) ||
+        (PyType_Ready(&PyContextToken_Type) < 0))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+/////////////////////////// PyContext
+
+/*[clinic input]
+class _contextvars.Context "PyContext *" "&PyContext_Type"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=bdf87f8e0cb580e8]*/
 
 
 static PyContext *
