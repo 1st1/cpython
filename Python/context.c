@@ -130,15 +130,13 @@ PyContextVar_Get(PyContextVar *var, PyObject *def)
     PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
 
     PyObject *val = NULL;
-    _Py_hamt_find_t res = _PyHamt_Find(vars, (PyObject*)var, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            goto not_found;
+    int res = _PyHamt_Find(vars, (PyObject*)var, &val);
+    if (res < 0) {
+        return NULL;
+    }
+    if (res == 1) {
+        Py_INCREF(val);
+        return val;
     }
 
 not_found:
@@ -180,8 +178,8 @@ PyContextVar_Set(PyContextVar *var, PyObject *val)
     PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
 
     PyObject *old_val = NULL;
-    _Py_hamt_find_t found = _PyHamt_Find(vars, (PyObject *)var, &old_val);
-    if (found == F_ERROR) {
+    int found = _PyHamt_Find(vars, (PyObject *)var, &old_val);
+    if (found < 0) {
         return NULL;
     }
 
@@ -376,7 +374,17 @@ context_tp_subscript(PyContext *self, PyObject *key)
     if (context_check_key_type(key)) {
         return NULL;
     }
-    return _PyHamt_GetItem(self->ctx_vars, key);
+    PyObject *val = NULL;
+    int found = _PyHamt_Find(self->ctx_vars, key, &val);
+    if (found < 0) {
+        return NULL;
+    }
+    if (found == 0) {
+        PyErr_SetObject(PyExc_KeyError, key);
+        return NULL;
+    }
+    Py_INCREF(val);
+    return val;
 }
 
 static int
@@ -385,7 +393,8 @@ context_tp_contains(PyContext *self, PyObject *key)
     if (context_check_key_type(key)) {
         return -1;
     }
-    return _PyHamt_Contains(self->ctx_vars, key);
+    PyObject *val = NULL;
+    return _PyHamt_Find(self->ctx_vars, key, &val);
 }
 
 
@@ -404,7 +413,18 @@ _contextvars_Context_get_impl(PyContext *self, PyObject *key,
     if (context_check_key_type(key)) {
         return NULL;
     }
-    return _PyHamt_Get(self->ctx_vars, key, default_value);
+
+    PyObject *val = NULL;
+    int found = _PyHamt_Find(self->ctx_vars, key, &val);
+    if (found < 0) {
+        return NULL;
+    }
+    if (found == 0) {
+        Py_INCREF(default_value);
+        return default_value;
+    }
+    Py_INCREF(val);
+    return val;
 }
 
 

@@ -10,29 +10,9 @@
 #define IS_COLLISION_NODE(node) (Py_TYPE(node) == &_PyHamt_CollisionNode_Type)
 
 
-#ifndef PyHamtNode_Bitmap_MAXSAVESIZE
-#define PyHamtNode_Bitmap_MAXSAVESIZE 20
-#endif
-#ifndef PyHamtNode_Bitmap_MAXFREELIST
-#define PyHamtNode_Bitmap_MAXFREELIST 5
-#endif
-
-
-#if PyHamtNode_Bitmap_MAXSAVESIZE > 0
-static PyHamtNode_Bitmap *free_bitmap_list[PyHamtNode_Bitmap_MAXSAVESIZE];
-static int numfree_bitmap[PyHamtNode_Bitmap_MAXSAVESIZE];
-#endif
-
-
-#ifndef PyHamtNode_Array_MAXFREELIST
-#define PyHamtNode_Array_MAXFREELIST 20
-#endif
-
-
-#if PyHamtNode_Array_MAXFREELIST > 0
-static PyHamtNode_Array *free_array_list;
-static int numfree_array;
-#endif
+typedef enum {F_ERROR, F_NOT_FOUND, F_FOUND} hamt_find_t;
+typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
+typedef enum {I_ITEM, I_END} hamt_iter_t;
 
 
 static PyHamtNode_Bitmap *_empty_bitmap_node;
@@ -46,13 +26,13 @@ hamt_node_assoc(PyHamtNode *node,
                 uint32_t shift, int32_t hash,
                 PyObject *key, PyObject *val, int* added_leaf);
 
-static _Py_hamt_without_t
+static hamt_without_t
 hamt_node_without(PyHamtNode *node,
                   uint32_t shift, int32_t hash,
                   PyObject *key,
                   PyHamtNode **new_node);
 
-static _Py_hamt_find_t
+static hamt_find_t
 hamt_node_find(PyHamtNode *node,
                uint32_t shift, int32_t hash,
                PyObject *key, PyObject **val);
@@ -673,7 +653,7 @@ hamt_node_bitmap_assoc(PyHamtNode_Bitmap *self,
     }
 }
 
-static _Py_hamt_without_t
+static hamt_without_t
 hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
                          uint32_t shift, int32_t hash,
                          PyObject *key,
@@ -697,7 +677,7 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
 
         PyHamtNode *sub_node = NULL;
 
-        _Py_hamt_without_t res = hamt_node_without(
+        hamt_without_t res = hamt_node_without(
             (PyHamtNode *)val_or_node,
             shift + 5, hash, key, &sub_node);
 
@@ -806,7 +786,7 @@ hamt_node_bitmap_without(PyHamtNode_Bitmap *self,
     }
 }
 
-static _Py_hamt_find_t
+static hamt_find_t
 hamt_node_bitmap_find(PyHamtNode_Bitmap *self,
                       uint32_t shift, int32_t hash,
                       PyObject *key, PyObject **val)
@@ -888,23 +868,9 @@ hamt_node_bitmap_dealloc(PyHamtNode_Bitmap *self)
         while (--i >= 0) {
             Py_XDECREF(self->b_array[i]);
         }
-
-#if PyHamtNode_Bitmap_MAXSAVESIZE > 0
-        /* Check if we can add this node to the freelist of Bitmap nodes. */
-        if (len < PyHamtNode_Bitmap_MAXSAVESIZE &&
-                numfree_bitmap[len] < PyHamtNode_Bitmap_MAXFREELIST)
-        {
-            self->b_array[0] = (PyObject*) free_bitmap_list[len];
-            free_bitmap_list[len] = self;
-            numfree_bitmap[len]++;
-            goto done;
-        }
-
-#endif
     }
 
     Py_TYPE(self)->tp_free((PyObject *)self);
-done:
     Py_TRASHCAN_SAFE_END(self)
 }
 
@@ -1015,7 +981,7 @@ hamt_node_collision_new(int32_t hash, Py_ssize_t size)
     return (PyHamtNode *)node;
 }
 
-static _Py_hamt_find_t
+static hamt_find_t
 hamt_node_collision_find_index(PyHamtNode_Collision *self, PyObject *key,
                                Py_ssize_t *idx)
 {
@@ -1055,7 +1021,7 @@ hamt_node_collision_assoc(PyHamtNode_Collision *self,
            other keys in this Collision node. */
 
         Py_ssize_t key_idx = -1;
-        _Py_hamt_find_t found;
+        hamt_find_t found;
         PyHamtNode_Collision *new_node;
         Py_ssize_t i;
 
@@ -1165,7 +1131,7 @@ hamt_node_collision_count(PyHamtNode_Collision *node)
     return Py_SIZE(node) >> 1;
 }
 
-static _Py_hamt_without_t
+static hamt_without_t
 hamt_node_collision_without(PyHamtNode_Collision *self,
                             uint32_t shift, int32_t hash,
                             PyObject *key,
@@ -1176,7 +1142,7 @@ hamt_node_collision_without(PyHamtNode_Collision *self,
     }
 
     Py_ssize_t key_idx = -1;
-    _Py_hamt_find_t found = hamt_node_collision_find_index(self, key, &key_idx);
+    hamt_find_t found = hamt_node_collision_find_index(self, key, &key_idx);
 
     switch (found) {
         case F_ERROR:
@@ -1253,7 +1219,7 @@ hamt_node_collision_without(PyHamtNode_Collision *self,
     }
 }
 
-static _Py_hamt_find_t
+static hamt_find_t
 hamt_node_collision_find(PyHamtNode_Collision *self,
                          uint32_t shift, int32_t hash,
                          PyObject *key, PyObject **val)
@@ -1262,7 +1228,7 @@ hamt_node_collision_find(PyHamtNode_Collision *self,
        for the found key to 'val'. */
 
     Py_ssize_t idx = -1;
-    _Py_hamt_find_t res;
+    hamt_find_t res;
 
     res = hamt_node_collision_find_index(self, key, &idx);
     if (res == F_ERROR || res == F_NOT_FOUND) {
@@ -1360,26 +1326,12 @@ error:
 static PyHamtNode *
 hamt_node_array_new(Py_ssize_t count)
 {
-    /* Create a new Array node. */
-
-    PyHamtNode_Array *node;
     Py_ssize_t i;
 
-#if PyHamtNode_Array_MAXFREELIST > 0
-    /* Check if there's a node in the freelist. */
-    if ((node = free_array_list) != NULL) {
-        free_array_list = (PyHamtNode_Array *)node->a_array[0];
-        numfree_array--;
-        _Py_NewReference((PyObject *)node);
-    }
-    else
-#endif
-    {
-        /* Allocate a new Array node. */
-        node = PyObject_GC_New(PyHamtNode_Array, &_PyHamt_ArrayNode_Type);
-        if (node == NULL) {
-            return NULL;
-        }
+    PyHamtNode_Array *node = PyObject_GC_New(
+        PyHamtNode_Array, &_PyHamt_ArrayNode_Type);
+    if (node == NULL) {
+        return NULL;
     }
 
     for (i = 0; i < HAMT_ARRAY_NODE_SIZE; i++) {
@@ -1497,7 +1449,7 @@ hamt_node_array_assoc(PyHamtNode_Array *self,
     return (PyHamtNode *)new_node;
 }
 
-static _Py_hamt_without_t
+static hamt_without_t
 hamt_node_array_without(PyHamtNode_Array *self,
                         uint32_t shift, int32_t hash,
                         PyObject *key,
@@ -1511,7 +1463,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
     }
 
     PyHamtNode *sub_node = NULL;
-    _Py_hamt_without_t res = hamt_node_without(
+    hamt_without_t res = hamt_node_without(
         (PyHamtNode *)node,
         shift + 5, hash, key, &sub_node);
 
@@ -1652,7 +1604,7 @@ hamt_node_array_without(PyHamtNode_Array *self,
     }
 }
 
-static _Py_hamt_find_t
+static hamt_find_t
 hamt_node_array_find(PyHamtNode_Array *self,
                      uint32_t shift, int32_t hash,
                      PyObject *key, PyObject **val)
@@ -1701,17 +1653,7 @@ hamt_node_array_dealloc(PyHamtNode_Array *self)
         Py_XDECREF(self->a_array[i]);
     }
 
-#if PyHamtNode_Array_MAXFREELIST > 0
-    if (numfree_array < PyHamtNode_Array_MAXFREELIST) {
-        self->a_array[0] = (PyHamtNode *)free_array_list;
-        free_array_list = self;
-        numfree_array++;
-        goto done;
-    }
-#endif
-
     Py_TYPE(self)->tp_free((PyObject *)self);
-done:
     Py_TRASHCAN_SAFE_END(self)
 }
 
@@ -1798,7 +1740,7 @@ hamt_node_assoc(PyHamtNode *node,
     }
 }
 
-static _Py_hamt_without_t
+static hamt_without_t
 hamt_node_without(PyHamtNode *node,
                   uint32_t shift, int32_t hash,
                   PyObject *key,
@@ -1825,7 +1767,7 @@ hamt_node_without(PyHamtNode *node,
     }
 }
 
-static _Py_hamt_find_t
+static hamt_find_t
 hamt_node_find(PyHamtNode *node,
                uint32_t shift, int32_t hash,
                PyObject *key, PyObject **val)
@@ -1893,7 +1835,7 @@ hamt_node_dump(PyHamtNode *node,
 /////////////////////////////////// Iterators: Machinery
 
 
-static _Py_hamt_iter_t
+static hamt_iter_t
 hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val);
 
 
@@ -1911,7 +1853,7 @@ hamt_iterator_init(PyHamtIteratorState *iter, PyHamtNode *root)
     iter->i_nodes[0] = root;
 }
 
-static _Py_hamt_iter_t
+static hamt_iter_t
 hamt_iterator_bitmap_next(PyHamtIteratorState *iter,
                           PyObject **key, PyObject **val)
 {
@@ -1948,7 +1890,7 @@ hamt_iterator_bitmap_next(PyHamtIteratorState *iter,
     return I_ITEM;
 }
 
-static _Py_hamt_iter_t
+static hamt_iter_t
 hamt_iterator_collision_next(PyHamtIteratorState *iter,
                              PyObject **key, PyObject **val)
 {
@@ -1972,7 +1914,7 @@ hamt_iterator_collision_next(PyHamtIteratorState *iter,
     return I_ITEM;
 }
 
-static _Py_hamt_iter_t
+static hamt_iter_t
 hamt_iterator_array_next(PyHamtIteratorState *iter,
                          PyObject **key, PyObject **val)
 {
@@ -2013,7 +1955,7 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
     return hamt_iterator_next(iter, key, val);
 }
 
-static _Py_hamt_iter_t
+static hamt_iter_t
 hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val)
 {
     if (iter->i_level < 0) {
@@ -2088,7 +2030,7 @@ _PyHamt_Without(PyHamtObject *o, PyObject *key)
 
     PyHamtNode *new_root;
 
-    _Py_hamt_without_t res = hamt_node_without(
+    hamt_without_t res = hamt_node_without(
         (PyHamtNode *)(o->h_root),
         0, key_hash, key,
         &new_root);
@@ -2116,8 +2058,8 @@ _PyHamt_Without(PyHamtObject *o, PyObject *key)
     }
 }
 
-_Py_hamt_find_t
-_PyHamt_Find(PyHamtObject *o, PyObject *key, PyObject **val)
+hamt_find_t
+hamt_find(PyHamtObject *o, PyObject *key, PyObject **val)
 {
     int32_t key_hash;
 
@@ -2129,16 +2071,36 @@ _PyHamt_Find(PyHamtObject *o, PyObject *key, PyObject **val)
     return hamt_node_find(o->h_root, 0, key_hash, key, val);
 }
 
+
+int
+_PyHamt_Find(PyHamtObject *o, PyObject *key, PyObject **val)
+{
+    hamt_find_t res = hamt_find(o, key, val);
+    switch (res) {
+        case F_ERROR:
+            return -1;
+        case F_NOT_FOUND:
+            return 0;
+        case F_FOUND:
+            return 1;
+    }
+}
+
+
 int
 _PyHamt_Eq(PyHamtObject *v, PyHamtObject *w)
 {
+    if (v == w) {
+        return 1;
+    }
+
     if (v->h_count != w->h_count) {
         return 0;
     }
 
     PyHamtIteratorState iter;
-    _Py_hamt_iter_t iter_res;
-    _Py_hamt_find_t find_res;
+    hamt_iter_t iter_res;
+    hamt_find_t find_res;
     PyObject *v_key;
     PyObject *v_val;
     PyObject *w_val;
@@ -2148,7 +2110,7 @@ _PyHamt_Eq(PyHamtObject *v, PyHamtObject *w)
     do {
         iter_res = hamt_iterator_next(&iter, &v_key, &v_val);
         if (iter_res == I_ITEM) {
-            find_res = _PyHamt_Find(w, v_key, &w_val);
+            find_res = hamt_find(w, v_key, &w_val);
             switch (find_res) {
                 case F_ERROR:
                     return -1;
@@ -2176,58 +2138,6 @@ Py_ssize_t
 _PyHamt_Len(PyHamtObject *o)
 {
     return o->h_count;
-}
-
-int
-_PyHamt_Contains(PyHamtObject *self, PyObject *key)
-{
-    PyObject *val;
-    _Py_hamt_find_t res = _PyHamt_Find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return -1;
-        case F_FOUND:
-            return 1;
-        case F_NOT_FOUND:
-            return 0;
-    }
-}
-
-PyObject *
-_PyHamt_GetItem(PyHamtObject *self, PyObject *key)
-{
-    PyObject *val;
-    _Py_hamt_find_t res = _PyHamt_Find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            PyErr_SetObject(PyExc_KeyError, key);
-            return NULL;
-    }
-}
-
-PyObject *
-_PyHamt_Get(PyHamtObject *self, PyObject *key, PyObject *def)
-{
-    PyObject *val = NULL;
-    _Py_hamt_find_t res = _PyHamt_Find(self, key, &val);
-    switch (res) {
-        case F_ERROR:
-            return NULL;
-        case F_FOUND:
-            Py_INCREF(val);
-            return val;
-        case F_NOT_FOUND:
-            if (def == NULL) {
-                Py_RETURN_NONE;
-            }
-            Py_INCREF(def);
-            return def;
-    }
 }
 
 static PyHamtObject *
@@ -2316,7 +2226,7 @@ hamt_baseiter_tp_iternext(PyHamtIterator *it)
 {
     PyObject *key;
     PyObject *val;
-    _Py_hamt_iter_t res = hamt_iterator_next(&it->hi_iter, &key, &val);
+    hamt_iter_t res = hamt_iterator_next(&it->hi_iter, &key, &val);
 
     switch (res) {
         case I_END:
@@ -2519,13 +2429,25 @@ hamt_tp_richcompare(PyObject *v, PyObject *w, int op)
 static int
 hamt_tp_contains(PyHamtObject *self, PyObject *key)
 {
-    return _PyHamt_Contains(self, key);
+    PyObject *val;
+    return _PyHamt_Find(self, key, &val);
 }
 
 static PyObject *
 hamt_tp_subscript(PyHamtObject *self, PyObject *key)
 {
-    return _PyHamt_GetItem(self, key);
+    PyObject *val;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            PyErr_SetObject(PyExc_KeyError, key);
+            return NULL;
+    }
 }
 
 static Py_ssize_t
@@ -2563,7 +2485,21 @@ hamt_py_get(PyHamtObject *self, PyObject *args)
         return NULL;
     }
 
-    return _PyHamt_Get(self, key, def);
+    PyObject *val = NULL;
+    hamt_find_t res = hamt_find(self, key, &val);
+    switch (res) {
+        case F_ERROR:
+            return NULL;
+        case F_FOUND:
+            Py_INCREF(val);
+            return val;
+        case F_NOT_FOUND:
+            if (def == NULL) {
+                Py_RETURN_NONE;
+            }
+            Py_INCREF(def);
+            return def;
+    }
 }
 
 static PyObject *
