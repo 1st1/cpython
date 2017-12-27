@@ -232,6 +232,28 @@ static PyContext *ctx_freelist = NULL;
 static Py_ssize_t ctx_freelist_len = 0;
 
 
+int
+PyContext_ClearFreeList(void)
+{
+    int size = ctx_freelist_len;
+    while (ctx_freelist_len) {
+        PyContext *ctx = ctx_freelist;
+        ctx_freelist = (PyContext *)ctx->ctx_weakreflist;
+        ctx->ctx_weakreflist = NULL;
+        PyObject_GC_Del(ctx);
+        ctx_freelist_len--;
+    }
+    return size;
+}
+
+
+void
+PyContext_Fini(void)
+{
+    (void)PyContext_ClearFreeList();
+}
+
+
 static PyContext *
 context_new(PyHamtObject *vars)
 {

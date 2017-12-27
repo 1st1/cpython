@@ -2627,3 +2627,10 @@ PyTypeObject _PyHamt_CollisionNode_Type = {
     .tp_free = PyObject_GC_Del,
     .tp_hash = PyObject_HashNotImplemented,
 };
+
+
+void
+PyHamt_Fini(void)
+{
+    Py_CLEAR(_empty_bitmap_node);
+}
