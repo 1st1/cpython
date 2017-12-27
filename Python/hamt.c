@@ -15,6 +15,30 @@ typedef enum {W_ERROR, W_NOT_FOUND, W_EMPTY, W_NEWNODE} hamt_without_t;
 typedef enum {I_ITEM, I_END} hamt_iter_t;
 
 
+#define HAMT_ARRAY_NODE_SIZE 32
+
+
+typedef struct {
+    PyObject_HEAD
+    PyHamtNode *a_array[HAMT_ARRAY_NODE_SIZE];
+    Py_ssize_t a_count;
+} PyHamtNode_Array;
+
+
+typedef struct {
+    PyObject_VAR_HEAD
+    uint32_t b_bitmap;
+    PyObject *b_array[1];
+} PyHamtNode_Bitmap;
+
+
+typedef struct {
+    PyObject_VAR_HEAD
+    int32_t c_hash;
+    PyObject *c_array[1];
+} PyHamtNode_Collision;
+
+
 static PyHamtNode_Bitmap *_empty_bitmap_node;
 
 
@@ -220,31 +244,14 @@ hamt_node_bitmap_new(Py_ssize_t size)
         return (PyHamtNode *)_empty_bitmap_node;
     }
 
-#if PyHamtNode_Bitmap_MAXSAVESIZE > 0
-    /* We have a freelist for bitmap nodes.  Check if we are
-       freelisting nodes of this size, and if there's a node
-       we can reuse in the freelist.
-    */
-    if (size > 0 &&
-            size < PyHamtNode_Bitmap_MAXSAVESIZE &&
-            (node = free_bitmap_list[size]) != NULL)
-    {
-        free_bitmap_list[size] = (PyHamtNode_Bitmap *)node->b_array[0];
-        numfree_bitmap[size]--;
-        _Py_NewReference((PyObject *)node);
+    /* No freelist; allocate a new bitmap node */
+    node = PyObject_GC_NewVar(
+        PyHamtNode_Bitmap, &_PyHamt_BitmapNode_Type, size);
+    if (node == NULL) {
+        return NULL;
     }
-    else
-#endif
-    {
-        /* No freelist; allocate a new bitmap node */
-        node = PyObject_GC_NewVar(
-            PyHamtNode_Bitmap, &_PyHamt_BitmapNode_Type, size);
-        if (node == NULL) {
-            return NULL;
-        }
 
-        Py_SIZE(node) = size;
-    }
+    Py_SIZE(node) = size;
 
     for (i = 0; i < size; i++) {
         node->b_array[i] = NULL;
@@ -1842,7 +1849,7 @@ hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val);
 static void
 hamt_iterator_init(PyHamtIteratorState *iter, PyHamtNode *root)
 {
-    for (uint32_t i = 0; i < HAMT_MAX_TREE_DEPTH; i++) {
+    for (uint32_t i = 0; i < _Py_HAMT_MAX_TREE_DEPTH; i++) {
         iter->i_nodes[i] = NULL;
         iter->i_pos[i] = 0;
     }
@@ -1875,7 +1882,7 @@ hamt_iterator_bitmap_next(PyHamtIteratorState *iter,
         iter->i_pos[level] = pos + 2;
 
         int8_t next_level = level + 1;
-        assert(next_level < HAMT_MAX_TREE_DEPTH);
+        assert(next_level < _Py_HAMT_MAX_TREE_DEPTH);
         iter->i_level = next_level;
         iter->i_pos[next_level] = 0;
         iter->i_nodes[next_level] = (PyHamtNode *)
@@ -1937,7 +1944,7 @@ hamt_iterator_array_next(PyHamtIteratorState *iter,
             iter->i_pos[level] = i + 1;
 
             int8_t next_level = level + 1;
-            assert(next_level < HAMT_MAX_TREE_DEPTH);
+            assert(next_level < _Py_HAMT_MAX_TREE_DEPTH);
             iter->i_pos[next_level] = 0;
             iter->i_nodes[next_level] = node->a_array[i];
             iter->i_level = next_level;
@@ -1962,7 +1969,7 @@ hamt_iterator_next(PyHamtIteratorState *iter, PyObject **key, PyObject **val)
         return I_END;
     }
 
-    assert(iter->i_level < HAMT_MAX_TREE_DEPTH);
+    assert(iter->i_level < _Py_HAMT_MAX_TREE_DEPTH);
 
     PyHamtNode *current = iter->i_nodes[iter->i_level];
 
