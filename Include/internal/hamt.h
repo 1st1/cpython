@@ -142,5 +142,7 @@ _PyHamt_NewIterValues(PyHamtObject *o);
 PyObject *
 _PyHamt_NewIterItems(PyHamtObject *o);
 
+void
+PyHamt_Fini(void);
 
 #endif /* !Py_INTERNAL_HAMT_H */

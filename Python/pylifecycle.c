@@ -4,6 +4,8 @@
 
 #include "Python-ast.h"
 #undef Yield /* undefine macro conflicting with winbase.h */
+#include "internal/context.h"
+#include "internal/hamt.h"
 #include "internal/pystate.h"
 #include "grammar.h"
 #include "node.h"
@@ -1176,6 +1178,8 @@ Py_FinalizeEx(void)
     _Py_HashRandomization_Fini();
     _PyArg_Fini();
     PyAsyncGen_Fini();
+    PyHamt_Fini();
+    PyContext_Fini();
 
     /* Cleanup Unicode implementation */
     _PyUnicode_Fini();

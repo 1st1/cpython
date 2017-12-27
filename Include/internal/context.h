@@ -30,4 +30,11 @@ struct _pycontexttokenobject {
 };
 
 
+int
+PyContext_ClearFreeList(void);
+
+void
+PyContext_Fini(void);
+
+
 #endif /* !Py_INTERNAL_CONTEXT_H */
