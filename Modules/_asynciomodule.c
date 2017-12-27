@@ -889,7 +889,7 @@ _asyncio_Future_add_done_callback_impl(FutureObj *self, PyObject *fn,
 /*[clinic end generated code: output=7ce635bbc9554c1e input=15ab0693a96e9533]*/
 {
     if (context == NULL) {
-        context = (PyObject *)PyContext_Get();
+        context = (PyObject *)PyContext_Copy();
         if (context == NULL) {
             return NULL;
         }
@@ -1981,7 +1981,7 @@ _asyncio_Task___init___impl(TaskObj *self, PyObject *coro, PyObject *loop)
         return -1;
     }
 
-    self->task_context = PyContext_Get();
+    self->task_context = PyContext_Copy();
     if (self->task_context == NULL) {
         return -1;
     }

@@ -204,7 +204,7 @@ class Future:
             self._loop.call_soon(fn, self, context=context)
         else:
             if context is None:
-                context = contextvars.get_context()
+                context = contextvars.copy_context()
             self._callbacks.append((fn, context))
 
     # New method not in PEP 3148.

@@ -47,7 +47,7 @@ PyContext_New(void)
 
 
 PyContext *
-PyContext_Get(void)
+PyContext_Copy(void)
 {
     PyThreadState *ts = PyThreadState_Get();
     PyHamtObject *vars = (PyHamtObject *)ts->contextvars;

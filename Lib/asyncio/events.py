@@ -30,7 +30,7 @@ class Handle:
 
     def __init__(self, callback, args, loop, context=None):
         if context is None:
-            context = contextvars.get_context()
+            context = contextvars.copy_context()
         self._context = context
         self._loop = loop
         self._callback = callback

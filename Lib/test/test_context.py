@@ -67,7 +67,7 @@ class ContextTest(unittest.TestCase):
             ctx.get(1)
 
     def test_context_get_context_1(self):
-        ctx = contextvars.get_context()
+        ctx = contextvars.copy_context()
         self.assertIsInstance(ctx, contextvars.Context)
 
     def test_context_run_1(self):
@@ -132,7 +132,7 @@ class ContextTest(unittest.TestCase):
             ctx2.run(func2)
             self.assertEqual(var.get(None), 'spam')
 
-            cur = contextvars.get_context()
+            cur = contextvars.copy_context()
             self.assertEqual(len(cur), 1)
             self.assertEqual(cur[var], 'spam')
             return cur
