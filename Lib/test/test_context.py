@@ -1,7 +1,9 @@
+import concurrent.futures
 import contextvars
 import functools
 import gc
 import random
+import time
 import unittest
 import weakref
 
@@ -212,6 +214,24 @@ class ContextTest(unittest.TestCase):
         t1 = v1.set(42)
         with self.assertRaisesRegex(ValueError, 'by a different'):
             v2.reset(t1)
+
+    @isolated_context
+    def test_context_threads_1(self):
+        cvar = contextvars.ContextVar('cvar')
+
+        def sub(num):
+            for i in range(10):
+                cvar.set(num + i)
+                time.sleep(random.uniform(0.001, 0.05))
+                self.assertEqual(cvar.get(), num + i)
+            return num
+
+        tp = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+        try:
+            results = list(tp.map(sub, range(10)))
+        finally:
+            tp.shutdown()
+        self.assertEqual(results, list(range(10)))
 
 
 # HAMT Tests

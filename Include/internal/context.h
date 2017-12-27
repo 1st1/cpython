@@ -18,6 +18,9 @@ struct _pycontextvarobject {
     PyObject_HEAD
     PyObject *var_name;
     PyObject *var_default;
+    PyObject *var_cached;
+    uint64_t var_cached_tsid;
+    uint64_t var_cached_tsver;
     Py_hash_t var_hash;
 };
 
