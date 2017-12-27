@@ -36,7 +36,7 @@ static PyObject *asyncio_task_print_stack_func;
 static PyObject *asyncio_task_repr_info_func;
 static PyObject *asyncio_InvalidStateError;
 static PyObject *asyncio_CancelledError;
-static PyObject *call_soon_kwnames;
+static PyObject *context_kwname;
 
 
 /* WeakSet containing all alive tasks. */
@@ -367,7 +367,7 @@ call_soon(PyObject *loop, PyObject *func, PyObject *arg, PyContext *ctx)
         stack[nargs] = (PyObject *)ctx;
 
         handle = _PyObject_FastCallKeywords(
-            callable, stack, nargs, call_soon_kwnames);
+            callable, stack, nargs, context_kwname);
         Py_DECREF(callable);
     }
 
@@ -2801,14 +2801,23 @@ set_exception:
                     goto fail;
                 }
 
-                /* result.add_done_callback(task._wakeup) */
                 wrapper = TaskWakeupMethWrapper_new(task);
                 if (wrapper == NULL) {
                     goto fail;
                 }
-                res = _PyObject_CallMethodIdObjArgs(result,
-                                                    &PyId_add_done_callback,
-                                                    wrapper, NULL);
+
+                /* result.add_done_callback(task._wakeup) */
+                PyObject *add_cb = _PyObject_GetAttrId(
+                    result, &PyId_add_done_callback);
+                if (add_cb == NULL) {
+                    goto fail;
+                }
+                PyObject *stack[2];
+                stack[0] = wrapper;
+                stack[1] = (PyObject *)task->task_context;
+                res = _PyObject_FastCallKeywords(
+                    add_cb, stack, 1, context_kwname);
+                Py_DECREF(add_cb);
                 Py_DECREF(wrapper);
                 if (res == NULL) {
                     goto fail;
@@ -3218,7 +3227,7 @@ module_free(void *m)
     Py_CLEAR(current_tasks);
     Py_CLEAR(iscoroutine_typecache);
 
-    Py_CLEAR(call_soon_kwnames);
+    Py_CLEAR(context_kwname);
 
     module_free_freelists();
 }
@@ -3244,15 +3253,15 @@ module_init(void)
     }
 
 
-    call_soon_kwnames = PyTuple_New(1);
-    if (call_soon_kwnames == NULL) {
+    context_kwname = PyTuple_New(1);
+    if (context_kwname == NULL) {
         goto fail;
     }
     PyObject *context_str = PyUnicode_FromString("context");
     if (context_str == NULL) {
         goto fail;
     }
-    PyTuple_SET_ITEM(call_soon_kwnames, 0, context_str);
+    PyTuple_SET_ITEM(context_kwname, 0, context_str);
 
 #define WITH_MOD(NAME) \
     Py_CLEAR(module); \
