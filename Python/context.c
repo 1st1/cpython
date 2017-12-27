@@ -83,6 +83,7 @@ PyContext_Enter(PyContext *ctx)
 
     Py_INCREF(ctx->ctx_vars);
     ts->contextvars = (PyObject *)ctx->ctx_vars;
+    ts->contextvars_stack_ver++;
 
     return 0;
 }
@@ -103,6 +104,8 @@ PyContext_Exit(PyContext *ctx)
     ctx->ctx_vars = (PyHamtObject *)ts->contextvars;
 
     ts->contextvars = (PyObject *)ctx->ctx_prev;  /* borrow */
+    ts->contextvars_stack_ver++;
+
     ctx->ctx_prev = NULL;
     ctx->ctx_prev_set = 0;
 
@@ -131,6 +134,14 @@ PyContextVar_Get(PyContextVar *var, PyObject *def)
         goto not_found;
     }
 
+    if (var->var_cached != NULL &&
+            var->var_cached_tsid == ts->id &&
+            var->var_cached_tsver == ts->contextvars_stack_ver)
+    {
+        Py_INCREF(var->var_cached);
+        return var->var_cached;
+    }
+
     assert(PyHamt_Check(ts->contextvars));
     PyHamtObject *vars = (PyHamtObject *)ts->contextvars;
 
@@ -140,6 +151,10 @@ PyContextVar_Get(PyContextVar *var, PyObject *def)
         return NULL;
     }
     if (res == 1) {
+        var->var_cached = val;  /* borrow */
+        var->var_cached_tsid = ts->id;
+        var->var_cached_tsver = ts->contextvars_stack_ver;
+
         Py_INCREF(val);
         return val;
     }
@@ -583,8 +598,9 @@ PyTypeObject PyContext_Type = {
 static int
 contextvar_set(PyContextVar *var, PyObject *val)
 {
-    PyThreadState *ts = PyThreadState_Get();
+    var->var_cached = NULL;
 
+    PyThreadState *ts = PyThreadState_Get();
     if (ts->contextvars == NULL) {
         ts->contextvars = (PyObject *)_PyHamt_New();
         if (ts->contextvars == NULL) {
@@ -601,6 +617,11 @@ contextvar_set(PyContextVar *var, PyObject *val)
     }
 
     ts->contextvars = (PyObject *)new_vars;
+
+    var->var_cached = val;  /* borrow */
+    var->var_cached_tsid = ts->id;
+    var->var_cached_tsver = ts->contextvars_stack_ver;
+
     Py_DECREF(vars);
     return 0;
 }
@@ -608,8 +629,9 @@ contextvar_set(PyContextVar *var, PyObject *val)
 static int
 contextvar_del(PyContextVar *var)
 {
-    PyThreadState *ts = PyThreadState_Get();
+    var->var_cached = NULL;
 
+    PyThreadState *ts = PyThreadState_Get();
     if (ts->contextvars == NULL) {
         return 0;
     }
@@ -684,6 +706,10 @@ contextvar_new(PyObject *name, PyObject *def)
 
     Py_XINCREF(def);
     var->var_default = def;
+
+    var->var_cached = NULL;
+    var->var_cached_tsid = 0;
+    var->var_cached_tsver = 0;
 
     PyObject_GC_Track(var);
     return var;
