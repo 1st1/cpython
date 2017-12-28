@@ -617,13 +617,11 @@ contextvar_set(PyContextVar *var, PyObject *val)
         return -1;
     }
 
-    ts->contextvars = (PyObject *)new_vars;
+    Py_SETREF(ts->contextvars, (PyObject *)new_vars);
 
     var->var_cached = val;  /* borrow */
     var->var_cached_tsid = ts->id;
     var->var_cached_tsver = ts->contextvars_stack_ver;
-
-    Py_DECREF(vars);
     return 0;
 }
 
@@ -744,6 +742,9 @@ contextvar_tp_clear(PyContextVar *self)
 {
     Py_CLEAR(self->var_name);
     Py_CLEAR(self->var_default);
+    self->var_cached = NULL;
+    self->var_cached_tsid = 0;
+    self->var_cached_tsver = 0;
     return 0;
 }
 

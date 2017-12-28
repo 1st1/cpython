@@ -82,7 +82,7 @@ PyHamtObject * _PyHamt_Without(PyHamtObject *o, PyObject *key);
    Return:
    - -1: An error ocurred.
    - 0: "key" wasn't found in "o".
-   - 1: "key" is in "o"; "*val" is set to its value.
+   - 1: "key" is in "o"; "*val" is set to its value (a borrowed ref).
 */
 int _PyHamt_Find(PyHamtObject *o, PyObject *key, PyObject **val);
 
