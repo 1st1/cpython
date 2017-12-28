@@ -151,6 +151,7 @@ PyContextVar_Get(PyContextVar *var, PyObject *def, PyObject **val)
         return -1;
     }
     if (res == 1) {
+        assert(found != NULL);
         var->var_cached = found;  /* borrow */
         var->var_cached_tsid = ts->id;
         var->var_cached_tsver = ts->contextvars_stack_ver;
