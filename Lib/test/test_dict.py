@@ -267,8 +267,43 @@ class DictTest(unittest.TestCase):
     def test_copy(self):
         d = {1:1, 2:2, 3:3}
         self.assertEqual(d.copy(), {1:1, 2:2, 3:3})
+        d = {1: 1, 2: 2, 3: 3}
+        self.assertIsNot(d.copy(), d)
+        self.assertEqual(d.copy(), d)
+        self.assertEqual(d.copy(), {1: 1, 2: 2, 3: 3})
+
+        copy = d.copy()
+        d[4] = 4
+        self.assertNotEqual(copy, d)
+
         self.assertEqual({}.copy(), {})
         self.assertRaises(TypeError, d.copy, None)
+
+    def test_copy_fuzz(self):
+        for dict_size in [10, 100, 1000, 10000, 100000]:
+            dict_size = random.randrange(
+                dict_size // 2, dict_size + dict_size // 2)
+
+            d = {}
+            for i in range(dict_size):
+                d[i] = i
+
+            d2 = d.copy()
+            self.assertIsNot(d2, d)
+            self.assertEqual(d, d2)
+            d2['key'] = 'value'
+            self.assertNotEqual(d, d2)
+            self.assertEqual(len(d2), len(d) + 1)
+
+    def test_copy_maintains_tracking(self):
+        class A:
+            pass
+
+        key = A()
+
+        for d in ({}, {'a': 1}, {key: 'val'}):
+            d2 = d.copy()
+            self.assertEqual(gc.is_tracked(d), gc.is_tracked(d2))
 
     def test_get(self):
         d = {}

@@ -1732,6 +1732,64 @@ dict_copy(register PyDictObject *mp)
     return PyDict_Copy((PyObject*)mp);
 }
 
+static PyObject *
+dict_fast_copy(PyDictObject *mp)
+{
+    PyDictEntry *newtable;
+    PyDictEntry *ep;
+    PyDictObject *new = NULL;
+    Py_ssize_t i;
+
+    if (numfree) {
+        new = free_list[--numfree];
+        assert(new != NULL);
+        assert(Py_TYPE(new) == &PyDict_Type);
+        _Py_NewReference((PyObject *)new);
+    }
+    else {
+        new = PyObject_GC_New(PyDictObject, &PyDict_Type);
+        if (new == NULL) {
+            goto error;
+        }
+    }
+
+    if (mp->ma_mask != PyDict_MINSIZE - 1) {
+        newtable = PyMem_NEW(PyDictEntry, mp->ma_mask + 1);
+        if (newtable == NULL) {
+            goto error;
+        }
+    }
+    else {
+        newtable = new->ma_smalltable;
+    }
+
+    memcpy(newtable, mp->ma_table, sizeof(PyDictEntry) * (mp->ma_mask + 1));
+
+    for (ep = newtable, i = 0; i < mp->ma_mask + 1; ep++, i++) {
+        if (ep != NULL) {
+            Py_XINCREF(ep->me_key);
+            Py_XINCREF(ep->me_value);
+        }
+    }
+
+    new->ma_table = newtable;
+    new->ma_fill = mp->ma_fill;
+    new->ma_used = mp->ma_used;
+    new->ma_mask = mp->ma_mask;
+    new->ma_lookup = mp->ma_lookup;
+
+    if (_PyObject_GC_IS_TRACKED(mp)) {
+        _PyObject_GC_TRACK(new);
+    }
+
+    return (PyObject *)new;
+
+error:
+    Py_XDECREF(new);
+    return NULL;
+}
+
+
 PyObject *
 PyDict_Copy(PyObject *o)
 {
@@ -1741,6 +1799,11 @@ PyDict_Copy(PyObject *o)
         PyErr_BadInternalCall();
         return NULL;
     }
+
+    if (PyDict_CheckExact(o)) {
+        return dict_fast_copy((PyDictObject *)o);
+    }
+
     copy = PyDict_New();
     if (copy == NULL)
         return NULL;
