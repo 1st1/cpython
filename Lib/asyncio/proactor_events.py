@@ -309,6 +309,7 @@ class _ProactorReadPipeTransport(_ProactorBasePipeTransport,
 
                     # reschedule a new read
                     self._read_fut = self._loop._proactor.recv_into(self._sock, buf)
+                    print('--=-=-=-=-=-', self._read_fut)
 
                     self._read_fut.add_done_callback(self._loop_reading)
 
