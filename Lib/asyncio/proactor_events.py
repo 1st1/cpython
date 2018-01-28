@@ -251,6 +251,8 @@ class _ProactorReadPipeTransport(_ProactorBasePipeTransport,
         if self._paused:
             return
 
+        print('++++++++++++++++++++++++++++++++++++++++')
+
         nbytes = None
         try:
             if fut is not None:
