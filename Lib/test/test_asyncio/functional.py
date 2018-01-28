@@ -25,8 +25,8 @@ class FunctionalTestCaseMixin:
         self.loop = self.new_loop()
         asyncio.set_event_loop(None)
 
-        self.loop.set_exception_handler(self.loop_exception_handler)
-        self.__unhandled_exceptions = []
+        # self.loop.set_exception_handler(self.loop_exception_handler)
+        # self.__unhandled_exceptions = []
 
         # Disable `_get_running_loop`.
         self._old_get_running_loop = asyncio.events._get_running_loop
