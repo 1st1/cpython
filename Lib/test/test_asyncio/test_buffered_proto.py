@@ -10,10 +10,12 @@ class ReceiveStuffProto(asyncio.BufferedProtocol):
         self.con_lost_fut = con_lost_fut
 
     def get_buffer(self):
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAA get_buffer")
         self.buffer = bytearray(100)
         return self.buffer
 
     def buffer_updated(self, nbytes):
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAA buffer_updated", nbytes)
         self.cb(self.buffer[:nbytes])
 
     def connection_lost(self, exc):
@@ -66,11 +68,11 @@ class BaseTestBufferedProtocol(func_tests.FunctionalTestCaseMixin):
         self.loop.run_until_complete(srv.wait_closed())
 
 
-class BufferedProtocolSelectorTests(BaseTestBufferedProtocol,
-                                    unittest.TestCase):
+# class BufferedProtocolSelectorTests(BaseTestBufferedProtocol,
+#                                     unittest.TestCase):
 
-    def new_loop(self):
-        return asyncio.SelectorEventLoop()
+#     def new_loop(self):
+#         return asyncio.SelectorEventLoop()
 
 
 @unittest.skipUnless(hasattr(asyncio, 'ProactorEventLoop'), 'Windows only')
