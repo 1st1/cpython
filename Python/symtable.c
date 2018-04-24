@@ -1447,6 +1447,31 @@ symtable_visit_expr(struct symtable *st, expr_ty e)
         VISIT(st, expr, e->v.Compare.left);
         VISIT_SEQ(st, expr, e->v.Compare.comparators);
         break;
+    case AssignExpr_kind: {
+        expr_ty target = e->v.AssignExpr.target;
+        assert(target->kind == Name_kind);
+
+        identifier target_name = target->v.Name.id;
+        long cur = symtable_lookup(st, target_name);
+        if (cur < 0) {
+            VISIT_QUIT(st, 0);
+        }
+
+        if (cur & (DEF_LOCAL | DEF_PARAM | DEF_NONLOCAL | DEF_GLOBAL)) {
+            PyErr_Format(
+                PyExc_SyntaxError,
+                "cannot assign to existing name '%U'",
+                target_name);
+            PyErr_SyntaxLocationObject(st->st_filename,
+                                       target->lineno,
+                                       target->col_offset);
+            VISIT_QUIT(st, 0);
+        }
+
+        VISIT(st, expr, e->v.AssignExpr.value);
+        VISIT(st, expr, target);
+        break;
+    }
     case Call_kind:
         VISIT(st, expr, e->v.Call.func);
         VISIT_SEQ(st, expr, e->v.Call.args);

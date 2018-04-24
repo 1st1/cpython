@@ -2164,21 +2164,55 @@ ast_for_atom(struct compiling *c, const node *n)
         if (TYPE(ch) == RPAR)
             return Tuple(NULL, Load, LINENO(n), n->n_col_offset, c->c_arena);
 
-        if (TYPE(ch) == yield_expr)
-            return ast_for_expr(c, ch);
+        if (NCH(n) == 5) {
+            assert(TYPE(CHILD(n, 2)) == EQUAL);
+            assert(TYPE(CHILD(n, 3)) == test);
+            if (TYPE(ch) == testlist_comp &&
+                NCH(ch) == 1 &&
+                TYPE(CHILD(ch, 0)) == test)
+            {
+                expr_ty target = ast_for_expr(c, CHILD(ch, 0));
+                if (!target) {
+                    return NULL;
+                }
 
-        /* testlist_comp: test ( comp_for | (',' test)* [','] ) */
-        if ((NCH(ch) > 1) && (TYPE(CHILD(ch, 1)) == comp_for))
-            return ast_for_genexp(c, ch);
+                if (target->kind == Name_kind) {
+                    expr_ty value = ast_for_expr(c, CHILD(n, 3));
+                    if (!value) {
+                        return NULL;
+                    }
 
-        return ast_for_testlist(c, ch);
+                    if (!set_context(c, target, Store, CHILD(ch, 0))) {
+                        return NULL;
+                    }
+
+                    return AssignExpr(
+                        target, value,
+                        target->lineno, target->col_offset,
+                        c->c_arena);
+                }
+            }
+
+            ast_error(c, ch, "invalid assignment expression");
+            return NULL;
+        }
+        else {
+            if (TYPE(ch) == yield_expr)
+                return ast_for_expr(c, ch);
+
+            /* testlist_comp: test ( comp_for | (',' test)* [','] ) */
+            if ((NCH(ch) > 1) && (TYPE(CHILD(ch, 1)) == comp_for))
+                return ast_for_genexp(c, ch);
+
+            return ast_for_testlist(c, ch);
+        }
     case LSQB: /* list (or list comprehension) */
         ch = CHILD(n, 1);
 
         if (TYPE(ch) == RSQB)
             return List(NULL, Load, LINENO(n), n->n_col_offset, c->c_arena);
 
-        REQ(ch, testlist_comp);
+        // REQ(ch, testlist_comp);
         if (NCH(ch) == 1 || TYPE(CHILD(ch, 1)) == COMMA) {
             asdl_seq *elts = seq_for_testlist(c, ch);
             if (!elts)

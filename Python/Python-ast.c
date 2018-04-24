@@ -324,6 +324,11 @@ static PyTypeObject *Constant_type;
 static char *Constant_fields[]={
     "value",
 };
+static PyTypeObject *AssignExpr_type;
+static char *AssignExpr_fields[]={
+    "target",
+    "value",
+};
 static PyTypeObject *Attribute_type;
 _Py_IDENTIFIER(attr);
 _Py_IDENTIFIER(ctx);
@@ -965,6 +970,8 @@ static int init_types(void)
     if (!Ellipsis_type) return 0;
     Constant_type = make_type("Constant", expr_type, Constant_fields, 1);
     if (!Constant_type) return 0;
+    AssignExpr_type = make_type("AssignExpr", expr_type, AssignExpr_fields, 2);
+    if (!AssignExpr_type) return 0;
     Attribute_type = make_type("Attribute", expr_type, Attribute_fields, 3);
     if (!Attribute_type) return 0;
     Subscript_type = make_type("Subscript", expr_type, Subscript_fields, 3);
@@ -2242,6 +2249,32 @@ Constant(constant value, int lineno, int col_offset, PyArena *arena)
 }
 
 expr_ty
+AssignExpr(expr_ty target, expr_ty value, int lineno, int col_offset, PyArena
+           *arena)
+{
+    expr_ty p;
+    if (!target) {
+        PyErr_SetString(PyExc_ValueError,
+                        "field target is required for AssignExpr");
+        return NULL;
+    }
+    if (!value) {
+        PyErr_SetString(PyExc_ValueError,
+                        "field value is required for AssignExpr");
+        return NULL;
+    }
+    p = (expr_ty)PyArena_Malloc(arena, sizeof(*p));
+    if (!p)
+        return NULL;
+    p->kind = AssignExpr_kind;
+    p->v.AssignExpr.target = target;
+    p->v.AssignExpr.value = value;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    return p;
+}
+
+expr_ty
 Attribute(expr_ty value, identifier attr, expr_context_ty ctx, int lineno, int
           col_offset, PyArena *arena)
 {
@@ -3389,6 +3422,20 @@ ast2obj_expr(void* _o)
         result = PyType_GenericNew(Constant_type, NULL, NULL);
         if (!result) goto failed;
         value = ast2obj_constant(o->v.Constant.value);
+        if (!value) goto failed;
+        if (_PyObject_SetAttrId(result, &PyId_value, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        break;
+    case AssignExpr_kind:
+        result = PyType_GenericNew(AssignExpr_type, NULL, NULL);
+        if (!result) goto failed;
+        value = ast2obj_expr(o->v.AssignExpr.target);
+        if (!value) goto failed;
+        if (_PyObject_SetAttrId(result, &PyId_target, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        value = ast2obj_expr(o->v.AssignExpr.value);
         if (!value) goto failed;
         if (_PyObject_SetAttrId(result, &PyId_value, value) == -1)
             goto failed;
@@ -6914,6 +6961,44 @@ obj2ast_expr(PyObject* obj, expr_ty* out, PyArena* arena)
         if (*out == NULL) goto failed;
         return 0;
     }
+    isinstance = PyObject_IsInstance(obj, (PyObject*)AssignExpr_type);
+    if (isinstance == -1) {
+        return 1;
+    }
+    if (isinstance) {
+        expr_ty target;
+        expr_ty value;
+
+        if (_PyObject_LookupAttrId(obj, &PyId_target, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL) {
+            PyErr_SetString(PyExc_TypeError, "required field \"target\" missing from AssignExpr");
+            return 1;
+        }
+        else {
+            int res;
+            res = obj2ast_expr(tmp, &target, arena);
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        if (_PyObject_LookupAttrId(obj, &PyId_value, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL) {
+            PyErr_SetString(PyExc_TypeError, "required field \"value\" missing from AssignExpr");
+            return 1;
+        }
+        else {
+            int res;
+            res = obj2ast_expr(tmp, &value, arena);
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        *out = AssignExpr(target, value, lineno, col_offset, arena);
+        if (*out == NULL) goto failed;
+        return 0;
+    }
     isinstance = PyObject_IsInstance(obj, (PyObject*)Attribute_type);
     if (isinstance == -1) {
         return 1;
@@ -8341,6 +8426,8 @@ PyInit__ast(void)
     if (PyDict_SetItemString(d, "Ellipsis", (PyObject*)Ellipsis_type) < 0)
         return NULL;
     if (PyDict_SetItemString(d, "Constant", (PyObject*)Constant_type) < 0)
+        return NULL;
+    if (PyDict_SetItemString(d, "AssignExpr", (PyObject*)AssignExpr_type) < 0)
         return NULL;
     if (PyDict_SetItemString(d, "Attribute", (PyObject*)Attribute_type) < 0)
         return NULL;

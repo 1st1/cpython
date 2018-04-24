@@ -566,6 +566,117 @@ Corner-cases that used to crash:
     Traceback (most recent call last):
     SyntaxError: assignment to keyword
 
+Test assignment expressions:
+
+    >>> def test():
+    ...   a = (b = 2)
+    ...   return (a, b)
+    >>> test()
+    (2, 2)
+
+    >>> def test():
+    ...   a = 1
+    ...   a += (b = 2 + 1 + 12)
+    ...   return (a, b)
+    >>> test()
+    (16, 15)
+
+    >>> def test():
+    ...   a = 1
+    ...   a += (b = 2 + 1 + 12 and 100)
+    ...   return (a, b)
+    >>> test()
+    (101, 100)
+
+    >>> def test():
+    ...   b = 100
+    ...   def inner():
+    ...     a = (b = 2)
+    ...     return (a, b)
+    ...   return inner()
+    >>> test()
+    (2, 2)
+
+    >>> def test(a):
+    ...   return a
+    >>> test(a=(b=1)), b
+    (1, 1)
+
+    >>> def test(a):
+    ...   return a
+    >>> test((b=1)), b
+    (1, 1)
+
+    >>> r = iter(range(5, -1, -1))
+    >>> acc = []
+    >>> while (i = next(r)):
+    ...   acc.append(i)
+    >>> acc
+    [5, 4, 3, 2, 1]
+
+    >>> def test():
+    ...   b = [1]
+    ...   a = (b[0] = 2)
+    ...   return (a, b)
+    Traceback (most recent call last):
+    SyntaxError: invalid assignment expression
+
+    >>> def test():
+    ...   a = (b = c = 2)
+    ...   return (a, b)
+    Traceback (most recent call last):
+    SyntaxError: invalid syntax
+
+    >>> def test():
+    ...   a = (b += 1)
+    ...   return (a, b)
+    Traceback (most recent call last):
+    SyntaxError: invalid syntax
+
+    >>> def test():
+    ...   b = 1
+    ...   a = (b = 2)
+    ...   return (a, b)
+    Traceback (most recent call last):
+    SyntaxError: cannot assign to existing name 'b'
+
+    >>> def test(b=100):
+    ...   a = (b = 2)
+    ...   return (a, b)
+    Traceback (most recent call last):
+    SyntaxError: cannot assign to existing name 'b'
+
+    >>> def test(b=100):
+    ...   for i in range(10):
+    ...     a = (i = 2)
+    ...   return a
+    Traceback (most recent call last):
+    SyntaxError: cannot assign to existing name 'i'
+
+    >>> def test():
+    ...   b = 100
+    ...   def inner():
+    ...     nonlocal b
+    ...     a = (b = 2)
+    ...     return (a, b)
+    ...   return inner()
+    Traceback (most recent call last):
+    SyntaxError: cannot assign to existing name 'b'
+
+    >>> g = 1
+    >>> def test():
+    ...   a = (g = 2)
+    ...   return (a, g)
+    >>> test()
+    (2, 2)
+
+    >>> g = 1
+    >>> def test():
+    ...   global g
+    ...   a = (g = 2)
+    ...   return (a, g)
+    Traceback (most recent call last):
+    SyntaxError: cannot assign to existing name 'g'
 """
 
 import re

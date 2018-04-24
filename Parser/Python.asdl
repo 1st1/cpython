@@ -87,6 +87,8 @@ module Python
          | Ellipsis
          | Constant(constant value)
 
+         | AssignExpr(expr target, expr value)
+
          -- the following expression can appear in assignment context
          | Attribute(expr value, identifier attr, expr_context ctx)
          | Subscript(expr value, slice slice, expr_context ctx)

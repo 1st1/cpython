@@ -3462,6 +3462,15 @@ compiler_tuple(struct compiler *c, expr_ty e)
 }
 
 static int
+compiler_assign_expr(struct compiler *c, expr_ty e)
+{
+    VISIT(c, expr, e->v.AssignExpr.value);
+    ADDOP(c, DUP_TOP);
+    VISIT(c, expr, e->v.AssignExpr.target);
+    return 1;
+}
+
+static int
 compiler_set(struct compiler *c, expr_ty e)
 {
     return starunpack_helper(c, e->v.Set.elts, BUILD_SET,
@@ -4580,6 +4589,8 @@ compiler_visit_expr(struct compiler *c, expr_ty e)
         return compiler_list(c, e);
     case Tuple_kind:
         return compiler_tuple(c, e);
+    case AssignExpr_kind:
+        return compiler_assign_expr(c, e);
     }
     return 1;
 }

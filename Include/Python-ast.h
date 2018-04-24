@@ -215,8 +215,8 @@ enum _expr_kind {BoolOp_kind=1, BinOp_kind=2, UnaryOp_kind=3, Lambda_kind=4,
                   Compare_kind=15, Call_kind=16, Num_kind=17, Str_kind=18,
                   FormattedValue_kind=19, JoinedStr_kind=20, Bytes_kind=21,
                   NameConstant_kind=22, Ellipsis_kind=23, Constant_kind=24,
-                  Attribute_kind=25, Subscript_kind=26, Starred_kind=27,
-                  Name_kind=28, List_kind=29, Tuple_kind=30};
+                  AssignExpr_kind=25, Attribute_kind=26, Subscript_kind=27,
+                  Starred_kind=28, Name_kind=29, List_kind=30, Tuple_kind=31};
 struct _expr {
     enum _expr_kind kind;
     union {
@@ -330,6 +330,11 @@ struct _expr {
         struct {
             constant value;
         } Constant;
+
+        struct {
+            expr_ty target;
+            expr_ty value;
+        } AssignExpr;
 
         struct {
             expr_ty value;
@@ -591,6 +596,9 @@ expr_ty _Py_Ellipsis(int lineno, int col_offset, PyArena *arena);
 #define Constant(a0, a1, a2, a3) _Py_Constant(a0, a1, a2, a3)
 expr_ty _Py_Constant(constant value, int lineno, int col_offset, PyArena
                      *arena);
+#define AssignExpr(a0, a1, a2, a3, a4) _Py_AssignExpr(a0, a1, a2, a3, a4)
+expr_ty _Py_AssignExpr(expr_ty target, expr_ty value, int lineno, int
+                       col_offset, PyArena *arena);
 #define Attribute(a0, a1, a2, a3, a4, a5) _Py_Attribute(a0, a1, a2, a3, a4, a5)
 expr_ty _Py_Attribute(expr_ty value, identifier attr, expr_context_ty ctx, int
                       lineno, int col_offset, PyArena *arena);
