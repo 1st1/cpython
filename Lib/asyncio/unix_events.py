@@ -841,6 +841,7 @@ class BaseChildWatcher(AbstractChildWatcher):
     def __init__(self):
         self._loop = None
         self._callbacks = {}
+        self._host_pid = os.getpid()
 
     def close(self):
         self.attach_loop(None)
@@ -1094,9 +1095,13 @@ class _UnixDefaultEventLoopPolicy(events.BaseDefaultEventLoopPolicy):
         super().__init__()
         self._watcher = None
 
+    def _has_watcher(self):
+        return (self._watcher is not None and
+                self._watcher._host_pid == os.getpid())
+
     def _init_watcher(self):
         with events._lock:
-            if self._watcher is None:  # pragma: no branch
+            if not self._has_watcher():
                 self._watcher = SafeChildWatcher()
                 if isinstance(threading.current_thread(),
                               threading._MainThread):
@@ -1112,7 +1117,7 @@ class _UnixDefaultEventLoopPolicy(events.BaseDefaultEventLoopPolicy):
 
         super().set_event_loop(loop)
 
-        if (self._watcher is not None and
+        if (self._has_watcher() and
                 isinstance(threading.current_thread(), threading._MainThread)):
             self._watcher.attach_loop(loop)
 
@@ -1121,7 +1126,7 @@ class _UnixDefaultEventLoopPolicy(events.BaseDefaultEventLoopPolicy):
 
         If not yet set, a SafeChildWatcher object is automatically created.
         """
-        if self._watcher is None:
+        if not self._has_watcher():
             self._init_watcher()
 
         return self._watcher
@@ -1131,7 +1136,7 @@ class _UnixDefaultEventLoopPolicy(events.BaseDefaultEventLoopPolicy):
 
         assert watcher is None or isinstance(watcher, AbstractChildWatcher)
 
-        if self._watcher is not None:
+        if self._has_watcher():
             self._watcher.close()
 
         self._watcher = watcher
