@@ -14,6 +14,10 @@ from test.test_asyncio import utils as test_utils
 from test import support
 
 
+def tearDownModule():
+    asyncio.set_event_loop_policy(None)
+
+
 def _fakefunc(f):
     return f
 
@@ -139,6 +143,7 @@ class BaseFutureTests:
         asyncio.set_event_loop(self.loop)
         f = self._new_future()
         self.assertIs(f._loop, self.loop)
+        self.assertIs(f.get_loop(), self.loop)
 
     def test_constructor_positional(self):
         # Make sure Future doesn't accept a positional argument
@@ -175,10 +180,6 @@ class BaseFutureTests:
             fut.remove_done_callback(lambda f: None)
 
         fut = self.cls.__new__(self.cls, loop=self.loop)
-        with self.assertRaises((RuntimeError, AttributeError)):
-            fut._schedule_callbacks()
-
-        fut = self.cls.__new__(self.cls, loop=self.loop)
         try:
             repr(fut)
         except (RuntimeError, AttributeError):
@@ -199,6 +200,27 @@ class BaseFutureTests:
         fut = self.cls.__new__(self.cls, loop=self.loop)
         self.assertFalse(fut.cancelled())
         self.assertFalse(fut.done())
+
+    def test_future_cancel_message_getter(self):
+        f = self._new_future(loop=self.loop)
+        self.assertTrue(hasattr(f, '_cancel_message'))
+        self.assertEqual(f._cancel_message, None)
+
+        f.cancel('my message')
+        with self.assertRaises(asyncio.CancelledError):
+            self.loop.run_until_complete(f)
+        self.assertEqual(f._cancel_message, 'my message')
+
+    def test_future_cancel_message_setter(self):
+        f = self._new_future(loop=self.loop)
+        f.cancel('my message')
+        f._cancel_message = 'my new message'
+        self.assertEqual(f._cancel_message, 'my new message')
+
+        # Also check that the value is used for cancel().
+        with self.assertRaises(asyncio.CancelledError):
+            self.loop.run_until_complete(f)
+        self.assertEqual(f._cancel_message, 'my new message')
 
     def test_cancel(self):
         f = self._new_future(loop=self.loop)
@@ -369,8 +391,14 @@ class BaseFutureTests:
         def test():
             arg1, arg2 = coro()
 
-        self.assertRaises(AssertionError, test)
+        with self.assertRaisesRegex(RuntimeError, "await wasn't used"):
+            test()
         fut.cancel()
+
+    def test_log_traceback(self):
+        fut = self._new_future(loop=self.loop)
+        with self.assertRaisesRegex(ValueError, 'can only be set to False'):
+            fut._log_traceback = True
 
     @mock.patch('asyncio.base_events.logger')
     def test_tb_logger_abandoned(self, m_log):
@@ -558,16 +586,29 @@ class BaseFutureTests:
 @unittest.skipUnless(hasattr(futures, '_CFuture'),
                      'requires the C _asyncio module')
 class CFutureTests(BaseFutureTests, test_utils.TestCase):
-    cls = futures._CFuture
+    try:
+        cls = futures._CFuture
+    except AttributeError:
+        cls = None
+
+    def test_future_del_segfault(self):
+        fut = self._new_future(loop=self.loop)
+        with self.assertRaises(AttributeError):
+            del fut._asyncio_future_blocking
+        with self.assertRaises(AttributeError):
+            del fut._log_traceback
 
 
 @unittest.skipUnless(hasattr(futures, '_CFuture'),
                      'requires the C _asyncio module')
 class CSubFutureTests(BaseFutureTests, test_utils.TestCase):
-    class CSubFuture(futures._CFuture):
-        pass
+    try:
+        class CSubFuture(futures._CFuture):
+            pass
 
-    cls = CSubFuture
+        cls = CSubFuture
+    except AttributeError:
+        cls = None
 
 
 class PyFutureTests(BaseFutureTests, test_utils.TestCase):
@@ -800,6 +841,45 @@ class PyFutureDoneCallbackTests(BaseFutureDoneCallbackTests,
 
     def _new_future(self):
         return futures._PyFuture(loop=self.loop)
+
+
+class BaseFutureInheritanceTests:
+
+    def _get_future_cls(self):
+        raise NotImplementedError
+
+    def setUp(self):
+        super().setUp()
+        self.loop = self.new_test_loop()
+        self.addCleanup(self.loop.close)
+
+    def test_inherit_without_calling_super_init(self):
+        # See https://bugs.python.org/issue38785 for the context
+        cls = self._get_future_cls()
+
+        class MyFut(cls):
+            def __init__(self, *args, **kwargs):
+                # don't call super().__init__()
+                pass
+
+        fut = MyFut(loop=self.loop)
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Future object is not initialized."
+        ):
+            fut.get_loop()
+
+
+class PyFutureInheritanceTests(BaseFutureInheritanceTests,
+                               test_utils.TestCase):
+    def _get_future_cls(self):
+        return futures._PyFuture
+
+
+class CFutureInheritanceTests(BaseFutureInheritanceTests,
+                              test_utils.TestCase):
+    def _get_future_cls(self):
+        return futures._CFuture
 
 
 if __name__ == '__main__':

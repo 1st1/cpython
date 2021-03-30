@@ -1,3 +1,5 @@
+import re
+import sys
 import types
 import unittest
 import weakref
@@ -49,7 +51,7 @@ class ClearTest(unittest.TestCase):
             nonlocal endly
             try:
                 yield
-                inner()
+                self.inner()
             finally:
                 endly = True
         gen = g()
@@ -93,6 +95,26 @@ class ClearTest(unittest.TestCase):
         f.clear()
         self.assertTrue(endly)
 
+    def test_lineno_with_tracing(self):
+        def record_line():
+            f = sys._getframe(1)
+            lines.append(f.f_lineno-f.f_code.co_firstlineno)
+
+        def test(trace):
+            record_line()
+            if trace:
+                sys._getframe(0).f_trace = True
+            record_line()
+            record_line()
+
+        expected_lines = [1, 4, 5]
+        lines = []
+        test(False)
+        self.assertEqual(lines, expected_lines)
+        lines = []
+        test(True)
+        self.assertEqual(lines, expected_lines)
+
     @support.cpython_only
     def test_clear_refcycles(self):
         # .clear() doesn't leave any refcycle behind
@@ -108,10 +130,7 @@ class ClearTest(unittest.TestCase):
             self.assertIs(None, wr())
 
 
-class FrameLocalsTest(unittest.TestCase):
-    """
-    Tests for the .f_locals attribute.
-    """
+class FrameAttrsTest(unittest.TestCase):
 
     def make_frames(self):
         def outer():
@@ -157,6 +176,51 @@ class FrameLocalsTest(unittest.TestCase):
         inner.clear()
         self.assertEqual(outer.f_locals, {})
         self.assertEqual(inner.f_locals, {})
+
+    def test_f_lineno_del_segfault(self):
+        f, _, _ = self.make_frames()
+        with self.assertRaises(AttributeError):
+            del f.f_lineno
+
+
+class ReprTest(unittest.TestCase):
+    """
+    Tests for repr(frame).
+    """
+
+    def test_repr(self):
+        def outer():
+            x = 5
+            y = 6
+            def inner():
+                z = x + 2
+                1/0
+                t = 9
+            return inner()
+
+        offset = outer.__code__.co_firstlineno
+        try:
+            outer()
+        except ZeroDivisionError as e:
+            tb = e.__traceback__
+            frames = []
+            while tb:
+                frames.append(tb.tb_frame)
+                tb = tb.tb_next
+        else:
+            self.fail("should have raised")
+
+        f_this, f_outer, f_inner = frames
+        file_repr = re.escape(repr(__file__))
+        self.assertRegex(repr(f_this),
+                         r"^<frame at 0x[0-9a-fA-F]+, file %s, line %d, code test_repr>$"
+                         % (file_repr, offset + 23))
+        self.assertRegex(repr(f_outer),
+                         r"^<frame at 0x[0-9a-fA-F]+, file %s, line %d, code outer>$"
+                         % (file_repr, offset + 7))
+        self.assertRegex(repr(f_inner),
+                         r"^<frame at 0x[0-9a-fA-F]+, file %s, line %d, code inner>$"
+                         % (file_repr, offset + 5))
 
 
 if __name__ == "__main__":

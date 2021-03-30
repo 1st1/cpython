@@ -82,7 +82,8 @@ class SingleNamespacePackage(NamespacePackageTest):
 
     def test_module_repr(self):
         import foo.one
-        self.assertEqual(repr(foo), "<module 'foo' (namespace)>")
+        self.assertEqual(foo.__spec__.loader.module_repr(foo),
+                         "<module 'foo' (namespace)>")
 
 
 class DynamicPathNamespacePackage(NamespacePackageTest):
@@ -315,6 +316,28 @@ class ReloadTests(NamespacePackageTest):
         # And make sure foo.two is now importable
         import foo.two
         self.assertEqual(foo.two.attr, 'portion2 foo two')
+
+
+class LoaderTests(NamespacePackageTest):
+    paths = ['portion1']
+
+    def test_namespace_loader_consistency(self):
+        # bpo-32303
+        import foo
+        self.assertEqual(foo.__loader__, foo.__spec__.loader)
+        self.assertIsNotNone(foo.__loader__)
+
+    def test_namespace_origin_consistency(self):
+        # bpo-32305
+        import foo
+        self.assertIsNone(foo.__spec__.origin)
+        self.assertIsNone(foo.__file__)
+
+    def test_path_indexable(self):
+        # bpo-35843
+        import foo
+        expected_path = os.path.join(self.root, 'portion1', 'foo')
+        self.assertEqual(foo.__path__[0], expected_path)
 
 
 if __name__ == "__main__":
