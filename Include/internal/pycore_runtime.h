@@ -108,6 +108,7 @@ typedef struct _Py_DebugOffsets {
         uint64_t instr_ptr;
         uint64_t localsplus;
         uint64_t owner;
+        uint64_t stackpointer;
     } interpreter_frame;
 
     // Code object offset;
@@ -152,6 +153,13 @@ typedef struct _Py_DebugOffsets {
         uint64_t ob_size;
     } list_object;
 
+    // PySet object offset;
+    struct _set_object {
+        uint64_t size;
+        uint64_t used;
+        uint64_t table;
+    } set_object;
+
     // PyDict object offset;
     struct _dict_object {
         uint64_t size;
@@ -195,14 +203,19 @@ typedef struct _Py_DebugOffsets {
 
     struct _gen_object {
         uint64_t size;
+        uint64_t gi_name;
         uint64_t gi_iframe;
         uint64_t gi_task;
+        uint64_t gi_frame_state;
     } gen_object;
 
     struct _asyncio_task_object {
         uint64_t size;
         uint64_t task_name;
         uint64_t task_awaited_by;
+        uint64_t task_is_task;
+        uint64_t task_awaited_by_is_set;
+        uint64_t task_coro;
     } asyncio_task_object;
 } _Py_DebugOffsets;
 

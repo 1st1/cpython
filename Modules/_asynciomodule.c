@@ -213,7 +213,6 @@ set_task_coro(TaskObj *task, PyObject *coro)
     assert(coro != NULL);
     if (PyCoro_CheckExact(coro)) {
         _PyCoro_SetTask(coro, (PyObject *)task);
-        printf("SET %p\n", task);
     }
     Py_INCREF(coro);
     Py_XSETREF(task->task_coro, coro);

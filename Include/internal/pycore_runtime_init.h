@@ -44,15 +44,15 @@ typedef enum {
     PyObject *prefix##_cancelled_exc;                                       \
     PyObject *prefix##_awaited_by;                                          \
     fut_state prefix##_state;                                               \
+    /* Used by profilers to make traversing the stack from an external      \
+       process faster. NOTE: can't be bit fields. */                        \
+    char prefix##_is_task;                                                  \
+    char prefix##_awaited_by_is_set;                                        \
     /* These bitfields need to be at the end of the struct                  \
        so that these and bitfields from TaskObj are contiguous.             \
     */                                                                      \
     unsigned prefix##_log_tb: 1;                                            \
     unsigned prefix##_blocking: 1;                                          \
-    /* Used by profilers to make traversing the stack from an external      \
-       process faster. */                                                   \
-    unsigned prefix##_is_task: 1;                                           \
-    unsigned prefix##_awaited_by_is_set: 1;
 
 typedef struct {
     FutureObj_HEAD(fut)
@@ -122,6 +122,7 @@ extern PyTypeObject _PyExc_MemoryError;
                 .instr_ptr = offsetof(_PyInterpreterFrame, instr_ptr), \
                 .localsplus = offsetof(_PyInterpreterFrame, localsplus), \
                 .owner = offsetof(_PyInterpreterFrame, owner), \
+                .stackpointer = offsetof(_PyInterpreterFrame, stackpointer), \
             }, \
             .code_object = { \
                 .size = sizeof(PyCodeObject), \
@@ -155,6 +156,11 @@ extern PyTypeObject _PyExc_MemoryError;
                 .ob_item = offsetof(PyListObject, ob_item), \
                 .ob_size = offsetof(PyListObject, ob_base.ob_size), \
             }, \
+            .set_object = { \
+                .size = sizeof(PySetObject), \
+                .used = offsetof(PySetObject, used), \
+                .table = offsetof(PySetObject, table), \
+            }, \
             .dict_object = { \
                 .size = sizeof(PyDictObject), \
                 .ma_keys = offsetof(PyDictObject, ma_keys), \
@@ -186,13 +192,18 @@ extern PyTypeObject _PyExc_MemoryError;
             }, \
             .gen_object = { \
                 .size = sizeof(PyGenObject), \
+                .gi_name = offsetof(PyGenObject, gi_name), \
                 .gi_iframe = offsetof(PyGenObject, gi_iframe), \
                 .gi_task = offsetof(PyGenObject, gi_task), \
+                .gi_frame_state = offsetof(PyGenObject, gi_frame_state), \
             }, \
             .asyncio_task_object = { \
                 .size = sizeof(TaskObj), \
                 .task_name = offsetof(TaskObj, task_name), \
                 .task_awaited_by = offsetof(TaskObj, task_awaited_by), \
+                .task_is_task = offsetof(TaskObj, task_is_task), \
+                .task_awaited_by_is_set = offsetof(TaskObj, task_awaited_by_is_set), \
+                .task_coro = offsetof(TaskObj, task_coro), \
             }, \
         }, \
         .allocators = { \

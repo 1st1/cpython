@@ -446,6 +446,16 @@ read_ptr(pid_t pid, uintptr_t address, uintptr_t *ptr_addr)
     return 0;
 }
 
+static inline int
+read_ssize_t(pid_t pid, uintptr_t address, Py_ssize_t *size)
+{
+    int bytes_read = read_memory(pid, address, sizeof(Py_ssize_t), size);
+    if (bytes_read == -1) {
+        return -1;
+    }
+    return 0;
+}
+
 static int
 read_py_ptr(pid_t pid, uintptr_t address, uintptr_t *ptr_addr)
 {
@@ -453,6 +463,16 @@ read_py_ptr(pid_t pid, uintptr_t address, uintptr_t *ptr_addr)
         return -1;
     }
     *ptr_addr &= ~Py_TAG_BITS;
+    return 0;
+}
+
+static int
+read_char(pid_t pid, uintptr_t address, char *result)
+{
+    int bytes_read = read_memory(pid, address, sizeof(char), result);
+    if (bytes_read < 0) {
+        return -1;
+    }
     return 0;
 }
 
@@ -500,6 +520,370 @@ get_py_runtime(pid_t pid)
 #else
     return 0;
 #endif
+}
+
+static PyObject *
+parse_task_name(
+    int pid,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t task_address
+) {
+    uintptr_t task_name_addr;
+    int err = read_py_ptr(
+        pid,
+        task_address + offsets->asyncio_task_object.task_name,
+        &task_name_addr);
+    if (err) {
+        return NULL;
+    }
+
+    return read_py_str(
+        pid,
+        offsets,
+        task_name_addr,
+        255
+    );
+}
+
+static int
+parse_coro_chain(
+    int pid,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t coro_address,
+    PyObject *render_to
+) {
+    assert((void*)coro_address != NULL);
+
+    uintptr_t gen_type_addr;
+    int err = read_ptr(
+        pid,
+        coro_address + sizeof(void*),
+        &gen_type_addr);
+    if (err) {
+        return -1;
+    }
+
+    uintptr_t gen_name_addr;
+    err = read_py_ptr(
+        pid,
+        coro_address + offsets->gen_object.gi_name,
+        &gen_name_addr);
+    if (err) {
+        return -1;
+    }
+
+    PyObject *name = read_py_str(
+        pid,
+        offsets,
+        gen_name_addr,
+        255
+    );
+    if (name == NULL) {
+        return -1;
+    }
+
+    if (PyList_Append(render_to, name)) {
+        return -1;
+    }
+
+    char gi_frame_state;
+    err = read_char(
+        pid,
+        coro_address + offsets->gen_object.gi_frame_state,
+        &gi_frame_state);
+
+    if (gi_frame_state == FRAME_SUSPENDED_YIELD_FROM) {
+        char owner;
+        err = read_char(
+            pid,
+            coro_address + offsets->gen_object.gi_iframe +
+                offsets->interpreter_frame.owner,
+            &owner
+        );
+        if (err) {
+            return -1;
+        }
+        if (owner != FRAME_OWNED_BY_GENERATOR) {
+            PyErr_SetString(
+                PyExc_RuntimeError,
+                "generator doesn't own its frame \\_o_/");
+            return -1;
+        }
+
+        uintptr_t stackpointer_addr;
+        err = read_py_ptr(
+            pid,
+            coro_address + offsets->gen_object.gi_iframe +
+                offsets->interpreter_frame.stackpointer,
+            &stackpointer_addr);
+        if (err) {
+            return -1;
+        }
+
+        if ((void*)stackpointer_addr != NULL) {
+            uintptr_t gi_await_addr;
+            err = read_py_ptr(
+                pid,
+                stackpointer_addr - sizeof(void*),
+                &gi_await_addr);
+            if (err) {
+                return -1;
+            }
+
+            if ((void*)gi_await_addr != NULL) {
+                uintptr_t gi_await_addr_type_addr;
+                int err = read_ptr(
+                    pid,
+                    gi_await_addr + sizeof(void*),
+                    &gi_await_addr_type_addr);
+                if (err) {
+                    return -1;
+                }
+
+                if (gen_type_addr == gi_await_addr_type_addr) {
+                    /* This needs an explanation. We always start with parsing
+                       native coroutine / generator frames. Ultimately they
+                       are awaiting on something. That something can be
+                       a native coroutine frame or... an iterator.
+                       If it's the latter -- we can't continue building
+                       our chain. So the condition to bail out of this is
+                       to do that when the type of the current coroutine
+                       doesn't match the type of whatever it points to
+                       in its cr_await.
+                    */
+                    err = parse_coro_chain(
+                        pid,
+                        offsets,
+                        gi_await_addr,
+                        render_to
+                    );
+                    if (err) {
+                        return -1;
+                    }
+                }
+            }
+        }
+
+    }
+
+    return 0;
+}
+
+
+static int
+parse_task_awaited_by(
+    int pid,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t task_address,
+    PyObject *awaited_by
+);
+
+
+static int
+parse_task(
+    int pid,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t task_address,
+    PyObject *render_to
+) {
+    char is_task;
+    int err = read_char(
+        pid,
+        task_address + offsets->asyncio_task_object.task_is_task,
+        &is_task);
+    if (err) {
+        return -1;
+    }
+
+    PyObject* result = PyList_New(0);
+    if (result == NULL) {
+        return -1;
+    }
+
+    PyObject *call_stack = PyList_New(0);
+    if (call_stack == NULL) {
+        return -1;
+    }
+    if (PyList_Append(result, call_stack)) {
+        Py_DECREF(call_stack);
+        goto err;
+    }
+    /* we can operate on a borrowed one to simplify cleanup */
+    Py_DECREF(call_stack);
+
+    if (is_task) {
+        PyObject *tn = parse_task_name(pid, offsets, task_address);
+        if (tn == NULL) {
+            goto err;
+        }
+        if (PyList_Append(result, tn)) {
+            Py_DECREF(tn);
+            goto err;
+        }
+        Py_DECREF(tn);
+
+        uintptr_t coro_addr;
+        err = read_py_ptr(
+            pid,
+            task_address + offsets->asyncio_task_object.task_coro,
+            &coro_addr);
+        if (err) {
+            goto err;
+        }
+
+        if ((void*)coro_addr != NULL) {
+            err = parse_coro_chain(
+                pid,
+                offsets,
+                coro_addr,
+                call_stack
+            );
+            if (err) {
+                goto err;
+            }
+
+            if (PyList_Reverse(call_stack)) {
+                goto err;
+            }
+        }
+    }
+
+    if (PyList_Append(render_to, result)) {
+        goto err;
+    }
+
+    PyObject *awaited_by = PyList_New(0);
+    if (awaited_by == NULL) {
+        goto err;
+    }
+    if (PyList_Append(result, awaited_by)) {
+        Py_DECREF(awaited_by);
+        goto err;
+    }
+    /* we can operate on a borrowed one to simplify cleanup */
+    Py_DECREF(awaited_by);
+
+    if (parse_task_awaited_by(pid, offsets, task_address, awaited_by)) {
+        goto err;
+    }
+
+    return 0;
+
+err:
+    Py_DECREF(result);
+    return -1;
+}
+
+
+static int
+parse_task_awaited_by(
+    int pid,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t task_address,
+    PyObject *awaited_by
+) {
+    uintptr_t task_ab_addr;
+    int err = read_py_ptr(
+        pid,
+        task_address + offsets->asyncio_task_object.task_awaited_by,
+        &task_ab_addr);
+    if (err) {
+        return -1;
+    }
+
+    if ((void*)task_ab_addr == NULL) {
+        return 0;
+    }
+
+    char awaited_by_is_a_set;
+    err = read_char(
+        pid,
+        task_address + offsets->asyncio_task_object.task_awaited_by_is_set,
+        &awaited_by_is_a_set);
+    if (err) {
+        return -1;
+    }
+
+    if (awaited_by_is_a_set) {
+        uintptr_t set_obj;
+        if (read_py_ptr(
+                pid,
+                task_address + offsets->asyncio_task_object.task_awaited_by,
+                &set_obj)
+        ) {
+            return -1;
+        }
+
+        Py_ssize_t set_len;
+        if (read_ssize_t(
+                pid,
+                set_obj + offsets->set_object.used,
+                &set_len)
+        ) {
+            return -1;
+        }
+
+        Py_ssize_t cnt = 0;
+        uintptr_t table_ptr;
+        if (read_ptr(
+                pid,
+                set_obj + offsets->set_object.table,
+                &table_ptr)
+        ) {
+            return -1;
+        }
+
+        while (cnt < set_len) {
+            uintptr_t key_addr;
+            if (read_py_ptr(pid, table_ptr, &key_addr)) {
+                return -1;
+            }
+
+            if ((void*)key_addr != NULL) {
+                Py_ssize_t ref_cnt;
+                if (read_ssize_t(pid, table_ptr, &ref_cnt)) {
+                    return -1;
+                }
+
+                if (ref_cnt) {
+                    // if 'ref_cnt=0' it's a set dummy marker
+
+                    if (parse_task(
+                        pid,
+                        offsets,
+                        key_addr,
+                        awaited_by)
+                    ) {
+                        return -1;
+                    }
+
+                    cnt++;
+                }
+            }
+
+            table_ptr += sizeof(void*) * 2;
+        }
+    } else {
+        uintptr_t sub_task;
+        if (read_py_ptr(
+                pid,
+                task_address + offsets->asyncio_task_object.task_awaited_by,
+                &sub_task)
+        ) {
+            return -1;
+        }
+
+        if (parse_task(
+            pid,
+            offsets,
+            sub_task,
+            awaited_by)
+        ) {
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 static int
@@ -552,18 +936,17 @@ parse_frame_object(
     int err;
 
     ssize_t bytes_read = read_memory(
-            pid,
-            address + offsets->interpreter_frame.previous,
-            sizeof(void*),
-            previous_frame);
+        pid,
+        address + offsets->interpreter_frame.previous,
+        sizeof(void*),
+        previous_frame
+    );
     if (bytes_read == -1) {
         return -1;
     }
 
     char owner;
-    bytes_read =
-            read_memory(pid, address + offsets->interpreter_frame.owner, sizeof(char), &owner);
-    if (bytes_read < 0) {
+    if (read_char(pid, address + offsets->interpreter_frame.owner, &owner)) {
         return -1;
     }
 
@@ -575,7 +958,8 @@ parse_frame_object(
     err = read_py_ptr(
         pid,
         address + offsets->interpreter_frame.executable,
-        &address_of_code_object);
+        &address_of_code_object
+    );
     if (err) {
         return -1;
     }
@@ -584,7 +968,70 @@ parse_frame_object(
         return 0;
     }
 
-    return parse_code_object(pid, result, offsets, address_of_code_object, previous_frame);
+    return parse_code_object(
+        pid, result, offsets, address_of_code_object, previous_frame);
+}
+
+static int
+parse_async_frame_object(
+    int pid,
+    PyObject* result,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t address,
+    uintptr_t* task,
+    uintptr_t* previous_frame
+) {
+    int err;
+
+    *task = (uintptr_t)NULL;
+
+    ssize_t bytes_read = read_memory(
+        pid,
+        address + offsets->interpreter_frame.previous,
+        sizeof(void*),
+        previous_frame
+    );
+    if (bytes_read == -1) {
+        return -1;
+    }
+
+    char owner;
+    bytes_read = read_memory(
+        pid, address + offsets->interpreter_frame.owner, sizeof(char), &owner);
+    if (bytes_read < 0) {
+        return -1;
+    }
+
+    if (owner == FRAME_OWNED_BY_CSTACK) {
+        return 0;
+    }
+
+    if (owner == FRAME_OWNED_BY_GENERATOR) {
+        err = read_py_ptr(
+            pid,
+            address - offsets->gen_object.gi_iframe + offsets->gen_object.gi_task,
+            task);
+        if (err) {
+            return -1;
+        }
+    }
+
+    uintptr_t address_of_code_object;
+    err = read_py_ptr(
+        pid,
+        address + offsets->interpreter_frame.executable,
+        &address_of_code_object
+    );
+    if (err) {
+        return -1;
+    }
+
+    if ((void*)address_of_code_object == NULL) {
+        return 0;
+    }
+
+    return parse_code_object(
+        pid, result, offsets, address_of_code_object, previous_frame);
 }
 
 static int
@@ -596,7 +1043,8 @@ read_offsets(
     *runtime_start_address = get_py_runtime(pid);
     if (!*runtime_start_address) {
         if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to get .PyRuntime address");
+            PyErr_SetString(
+                PyExc_RuntimeError, "Failed to get .PyRuntime address");
         }
         return -1;
     }
@@ -646,7 +1094,7 @@ find_running_frame(
     }
 
     // No Python frames are available for us (can happen at tear-down).
-    if (address_of_thread != 0) {
+    if ((void*)address_of_thread != NULL) {
         int err = read_ptr(
             pid,
             address_of_thread + local_debug_offsets->thread_state.current_frame,
@@ -693,6 +1141,7 @@ get_stack_trace(PyObject* self, PyObject* args)
     if (result == NULL) {
         return NULL;
     }
+
     while ((void*)address_of_current_frame != NULL) {
         if (parse_frame_object(
                     pid,
@@ -710,16 +1159,116 @@ get_stack_trace(PyObject* self, PyObject* args)
     return result;
 }
 
+static PyObject*
+get_async_stack_trace(PyObject* self, PyObject* args)
+{
+#if (!defined(__linux__) && !defined(__APPLE__)) || (defined(__linux__) && !HAVE_PROCESS_VM_READV)
+    PyErr_SetString(PyExc_RuntimeError, "get_stack_trace is not supported on this platform");
+    return NULL;
+#endif
+    int pid;
+
+    if (!PyArg_ParseTuple(args, "i", &pid)) {
+        return NULL;
+    }
+
+    uintptr_t runtime_start_address = get_py_runtime(pid);
+    struct _Py_DebugOffsets local_debug_offsets;
+
+    if (read_offsets(pid, &runtime_start_address, &local_debug_offsets)) {
+        return NULL;
+    }
+
+    uintptr_t address_of_current_frame;
+    if (find_running_frame(
+        pid, runtime_start_address, &local_debug_offsets,
+        &address_of_current_frame)
+    ) {
+        return NULL;
+    }
+
+    PyObject* result = PyList_New(1);
+    if (result == NULL) {
+        return NULL;
+    }
+    PyObject* calls = PyList_New(0);
+    if (calls == NULL) {
+        return NULL;
+    }
+    if (PyList_SetItem(result, 0, calls)) { /* steals ref to 'calls' */
+        Py_DECREF(result);
+        Py_DECREF(calls);
+        return NULL;
+    }
+
+    uintptr_t root_task_addr = (uintptr_t)NULL;
+    while ((void*)address_of_current_frame != NULL) {
+        int err = parse_async_frame_object(
+            pid,
+            calls,
+            &local_debug_offsets,
+            address_of_current_frame,
+            &root_task_addr,
+            &address_of_current_frame
+        );
+        if (err) {
+            goto result_err;
+        }
+
+        if ((void*)root_task_addr != NULL) {
+            break;
+        }
+    }
+
+    if ((void*)root_task_addr != NULL) {
+        PyObject *tn = parse_task_name(
+            pid, &local_debug_offsets, root_task_addr);
+        if (tn == NULL) {
+            goto result_err;
+        }
+        if (PyList_Append(result, tn)) {
+            Py_DECREF(tn);
+            goto result_err;
+        }
+        Py_DECREF(tn);
+    }
+
+    PyObject* awaited_by = PyList_New(0);
+    if (awaited_by == NULL) {
+        goto result_err;
+    }
+    if (PyList_Append(result, awaited_by)) {
+        Py_DECREF(awaited_by);
+        goto result_err;
+    }
+
+    if (parse_task_awaited_by(
+        pid, &local_debug_offsets, root_task_addr, awaited_by)
+    ) {
+        goto result_err;
+    }
+
+    return result;
+
+result_err:
+    Py_DECREF(result);
+    return NULL;
+}
+
+
 static PyMethodDef methods[] = {
-        {"get_stack_trace", get_stack_trace, METH_VARARGS, "Get the Python stack from a given PID"},
-        {NULL, NULL, 0, NULL},
+    {"get_stack_trace", get_stack_trace, METH_VARARGS,
+        "Get the Python stack from a given PID"},
+    {"get_async_stack_trace", get_async_stack_trace, METH_VARARGS,
+        "Get the asyncio stack from a given PID"},
+    {NULL, NULL, 0, NULL},
 };
 
 static struct PyModuleDef module = {
-        .m_base = PyModuleDef_HEAD_INIT,
-        .m_name = "_testexternalinspection",
-        .m_size = -1,
-        .m_methods = methods,
+    .m_base = PyModuleDef_HEAD_INIT,
+    .m_name = "_testexternalinspection",
+    .m_size = -1,
+    .m_methods = methods,
 };
 
 PyMODINIT_FUNC

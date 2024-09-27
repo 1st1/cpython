@@ -7,12 +7,13 @@ def tearDownModule():
     asyncio.set_event_loop_policy(None)
 
 
-def capture_test_stack(*, fut=None):
+def capture_test_stack(*, fut=None, anon=True):
 
     def walk(s):
         ret = [
-            (f"T<{n}>" if '-' not in (n := s.future.get_name()) else 'T<anon>')
-                if isinstance(s.future, asyncio.Task) else 'F'
+            (f"T<{s.future.get_name()}>"
+                if not anon or '-' not in s.future.get_name() else 'T<anon>'
+            ) if isinstance(s.future, asyncio.Task) else 'F'
         ]
 
         ret.append(
