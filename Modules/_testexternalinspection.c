@@ -58,8 +58,8 @@
 #endif
 
 #if defined(__APPLE__) && TARGET_OS_OSX
-static void*
-analyze_macho64(mach_port_t proc_ref, void* base, void* map)
+static uintptr_t
+analyze_macho64(mach_port_t proc_ref, uintptr_t base, void* map)
 {
     struct mach_header_64* hdr = (struct mach_header_64*)map;
     int ncmds = hdr->ncmds;
@@ -88,10 +88,10 @@ analyze_macho64(mach_port_t proc_ref, void* base, void* map)
                     != KERN_SUCCESS)
                 {
                     PyErr_SetString(PyExc_RuntimeError, "Cannot get any more VM maps.\n");
-                    return NULL;
+                    return 0;
                 }
             }
-            base = (void*)address - cmd->vmaddr;
+            base = address - cmd->vmaddr;
 
             int nsects = cmd->nsects;
             struct section_64* sec =
@@ -106,33 +106,33 @@ analyze_macho64(mach_port_t proc_ref, void* base, void* map)
 
         cmd = (struct segment_command_64*)((void*)cmd + cmd->cmdsize);
     }
-    return NULL;
+    return 0;
 }
 
-static void*
-analyze_macho(char* path, void* base, mach_vm_size_t size, mach_port_t proc_ref)
+static uintptr_t
+analyze_macho(char* path, uintptr_t base, mach_vm_size_t size, mach_port_t proc_ref)
 {
     int fd = open(path, O_RDONLY);
     if (fd == -1) {
         PyErr_Format(PyExc_RuntimeError, "Cannot open binary %s\n", path);
-        return NULL;
+        return 0;
     }
 
     struct stat fs;
     if (fstat(fd, &fs) == -1) {
         PyErr_Format(PyExc_RuntimeError, "Cannot get size of binary %s\n", path);
         close(fd);
-        return NULL;
+        return 0;
     }
 
     void* map = mmap(0, fs.st_size, PROT_READ, MAP_SHARED, fd, 0);
     if (map == MAP_FAILED) {
         PyErr_Format(PyExc_RuntimeError, "Cannot map binary %s\n", path);
         close(fd);
-        return NULL;
+        return 0;
     }
 
-    void* result = NULL;
+    uintptr_t result = 0;
 
     struct mach_header_64* hdr = (struct mach_header_64*)map;
     switch (hdr->magic) {
@@ -172,7 +172,7 @@ pid_to_task(pid_t pid)
     return task;
 }
 
-static void*
+static uintptr_t
 get_py_runtime_macos(pid_t pid)
 {
     mach_vm_address_t address = 0;
@@ -184,12 +184,12 @@ get_py_runtime_macos(pid_t pid)
     mach_port_t proc_ref = pid_to_task(pid);
     if (proc_ref == 0) {
         PyErr_SetString(PyExc_PermissionError, "Cannot get task for PID");
-        return NULL;
+        return 0;
     }
 
     int match_found = 0;
     char map_filename[MAXPATHLEN + 1];
-    void* result_address = NULL;
+    uintptr_t result_address = 0;
     while (mach_vm_region(
                    proc_ref,
                    &address,
@@ -216,11 +216,11 @@ get_py_runtime_macos(pid_t pid)
         // Check if the filename starts with "python" or "libpython"
         if (!match_found && strncmp(filename, "python", 6) == 0) {
             match_found = 1;
-            result_address = analyze_macho(map_filename, (void*)address, size, proc_ref);
+            result_address = analyze_macho(map_filename, address, size, proc_ref);
         }
         if (strncmp(filename, "libpython", 9) == 0) {
             match_found = 1;
-            result_address = analyze_macho(map_filename, (void*)address, size, proc_ref);
+            result_address = analyze_macho(map_filename, address, size, proc_ref);
             break;
         }
 
@@ -231,7 +231,7 @@ get_py_runtime_macos(pid_t pid)
 #endif
 
 #ifdef __linux__
-void*
+static uintptr_t
 find_python_map_start_address(pid_t pid, char* result_filename)
 {
     char maps_file_path[64];
@@ -247,7 +247,7 @@ find_python_map_start_address(pid_t pid, char* result_filename)
 
     char line[256];
     char map_filename[PATH_MAX];
-    void* result_address = 0;
+    uintptr_t result_address = 0;
     while (fgets(line, sizeof(line), maps_file) != NULL) {
         unsigned long start_address = 0;
         sscanf(line, "%lx-%*x %*s %*s %*s %*s %s", &start_address, map_filename);
@@ -261,12 +261,12 @@ find_python_map_start_address(pid_t pid, char* result_filename)
         // Check if the filename starts with "python" or "libpython"
         if (!match_found && strncmp(filename, "python", 6) == 0) {
             match_found = 1;
-            result_address = (void*)start_address;
+            result_address = start_address;
             strcpy(result_filename, map_filename);
         }
         if (strncmp(filename, "libpython", 9) == 0) {
             match_found = 1;
-            result_address = (void*)start_address;
+            result_address = start_address;
             strcpy(result_filename, map_filename);
             break;
         }
@@ -281,18 +281,18 @@ find_python_map_start_address(pid_t pid, char* result_filename)
     return result_address;
 }
 
-void*
+static void*
 get_py_runtime_linux(pid_t pid)
 {
     char elf_file[256];
-    void* start_address = (void*)find_python_map_start_address(pid, elf_file);
+    uintptr_t start_address = find_python_map_start_address(pid, elf_file);
 
     if (start_address == 0) {
         PyErr_SetString(PyExc_RuntimeError, "No memory map associated with python or libpython found");
         return NULL;
     }
 
-    void* result = NULL;
+    uintptr_t result = 0;
     void* file_memory = NULL;
 
     int fd = open(elf_file, O_RDONLY);
@@ -341,7 +341,7 @@ get_py_runtime_linux(pid_t pid)
     if (py_runtime_section != NULL && first_load_segment != NULL) {
         uintptr_t elf_load_addr = first_load_segment->p_vaddr
                                   - (first_load_segment->p_vaddr % first_load_segment->p_align);
-        result = start_address + py_runtime_section->sh_addr - elf_load_addr;
+        result = start_address + (uintptr_t)py_runtime_section->sh_addr - elf_load_addr;
     }
 
 exit:
@@ -355,8 +355,8 @@ exit:
 }
 #endif
 
-ssize_t
-read_memory(pid_t pid, void* remote_address, size_t len, void* dst)
+static ssize_t
+read_memory(pid_t pid, uintptr_t remote_address, size_t len, void* dst)
 {
     ssize_t total_bytes_read = 0;
 #if defined(__linux__) && HAVE_PROCESS_VM_READV
@@ -409,12 +409,16 @@ read_memory(pid_t pid, void* remote_address, size_t len, void* dst)
     return total_bytes_read;
 }
 
-int
-read_string(pid_t pid, _Py_DebugOffsets* debug_offsets, void* address, char* buffer, Py_ssize_t size)
+static int
+read_string(pid_t pid, _Py_DebugOffsets* debug_offsets, uintptr_t address, char* buffer, Py_ssize_t size)
 {
     Py_ssize_t len;
-    ssize_t bytes_read =
-            read_memory(pid, address + debug_offsets->unicode_object.length, sizeof(Py_ssize_t), &len);
+    ssize_t bytes_read = read_memory(
+        pid,
+        address + debug_offsets->unicode_object.length,
+        sizeof(Py_ssize_t),
+        &len
+    );
     if (bytes_read == -1) {
         return -1;
     }
@@ -431,7 +435,62 @@ read_string(pid_t pid, _Py_DebugOffsets* debug_offsets, void* address, char* buf
     return 0;
 }
 
-void*
+
+static inline int
+read_ptr(pid_t pid, uintptr_t address, uintptr_t *ptr_addr)
+{
+    int bytes_read = read_memory(pid, address, sizeof(void*), ptr_addr);
+    if (bytes_read == -1) {
+        return -1;
+    }
+    return 0;
+}
+
+static int
+read_py_ptr(pid_t pid, uintptr_t address, uintptr_t *ptr_addr)
+{
+    if (read_ptr(pid, address, ptr_addr)) {
+        return -1;
+    }
+    *ptr_addr &= ~Py_TAG_BITS;
+    return 0;
+}
+
+static PyObject *
+read_py_str(
+    pid_t pid,
+    _Py_DebugOffsets* debug_offsets,
+    uintptr_t address,
+    ssize_t max_len
+) {
+    assert(max_len > 0);
+
+    PyObject *result = NULL;
+
+    char *buf = (char *)PyMem_RawMalloc(max_len);
+    if (buf == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    if (read_string(pid, debug_offsets, address, buf, max_len)) {
+        goto err;
+    }
+
+    result = PyUnicode_FromString(buf);
+    if (result == NULL) {
+        goto err;
+    }
+
+    PyMem_RawFree(buf);
+    assert(result != NULL);
+    return result;
+
+err:
+    PyMem_RawFree(buf);
+    return NULL;
+}
+
+static uintptr_t
 get_py_runtime(pid_t pid)
 {
 #if defined(__linux__)
@@ -439,36 +498,36 @@ get_py_runtime(pid_t pid)
 #elif defined(__APPLE__) && TARGET_OS_OSX
     return get_py_runtime_macos(pid);
 #else
-    return NULL;
+    return 0;
 #endif
 }
 
 static int
 parse_code_object(
-        int pid,
-        PyObject* result,
-        struct _Py_DebugOffsets* offsets,
-        void* address,
-        void** previous_frame)
-{
-    void* address_of_function_name;
-    read_memory(
-            pid,
-            (void*)(address + offsets->code_object.name),
-            sizeof(void*),
-            &address_of_function_name);
+    int pid,
+    PyObject* result,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t address,
+    uintptr_t* previous_frame
+) {
+    uintptr_t address_of_function_name;
+    int bytes_read = read_memory(
+        pid,
+        address + offsets->code_object.name,
+        sizeof(void*),
+        &address_of_function_name
+    );
+    if (bytes_read == -1) {
+        return -1;
+    }
 
-    if (address_of_function_name == NULL) {
+    if ((void*)address_of_function_name == NULL) {
         PyErr_SetString(PyExc_RuntimeError, "No function name found");
         return -1;
     }
 
-    char function_name[256];
-    if (read_string(pid, offsets, address_of_function_name, function_name, sizeof(function_name)) != 0) {
-        return -1;
-    }
-
-    PyObject* py_function_name = PyUnicode_FromString(function_name);
+    PyObject* py_function_name = read_py_str(
+        pid, offsets, address_of_function_name, 256);
     if (py_function_name == NULL) {
         return -1;
     }
@@ -484,15 +543,17 @@ parse_code_object(
 
 static int
 parse_frame_object(
-        int pid,
-        PyObject* result,
-        struct _Py_DebugOffsets* offsets,
-        void* address,
-        void** previous_frame)
-{
+    int pid,
+    PyObject* result,
+    struct _Py_DebugOffsets* offsets,
+    uintptr_t address,
+    uintptr_t* previous_frame
+) {
+    int err;
+
     ssize_t bytes_read = read_memory(
             pid,
-            (void*)(address + offsets->interpreter_frame.previous),
+            address + offsets->interpreter_frame.previous,
             sizeof(void*),
             previous_frame);
     if (bytes_read == -1) {
@@ -501,7 +562,7 @@ parse_frame_object(
 
     char owner;
     bytes_read =
-            read_memory(pid, (void*)(address + offsets->interpreter_frame.owner), sizeof(char), &owner);
+            read_memory(pid, address + offsets->interpreter_frame.owner, sizeof(char), &owner);
     if (bytes_read < 0) {
         return -1;
     }
@@ -511,20 +572,93 @@ parse_frame_object(
     }
 
     uintptr_t address_of_code_object;
-    bytes_read = read_memory(
+    err = read_py_ptr(
+        pid,
+        address + offsets->interpreter_frame.executable,
+        &address_of_code_object);
+    if (err) {
+        return -1;
+    }
+
+    if ((void*)address_of_code_object == NULL) {
+        return 0;
+    }
+
+    return parse_code_object(pid, result, offsets, address_of_code_object, previous_frame);
+}
+
+static int
+read_offsets(
+    int pid,
+    uintptr_t *runtime_start_address,
+    _Py_DebugOffsets* debug_offsets
+) {
+    *runtime_start_address = get_py_runtime(pid);
+    if (!*runtime_start_address) {
+        if (!PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get .PyRuntime address");
+        }
+        return -1;
+    }
+    size_t size = sizeof(struct _Py_DebugOffsets);
+    ssize_t bytes_read = read_memory(
+        pid, *runtime_start_address, size, debug_offsets);
+    if (bytes_read == -1) {
+        return -1;
+    }
+    return 0;
+}
+
+static int
+find_running_frame(
+    int pid,
+    uintptr_t runtime_start_address,
+    _Py_DebugOffsets* local_debug_offsets,
+    uintptr_t *frame
+) {
+    off_t interpreter_state_list_head =
+        local_debug_offsets->runtime_state.interpreters_head;
+
+    uintptr_t address_of_interpreter_state;
+    int bytes_read = read_memory(
             pid,
-            (void*)(address + offsets->interpreter_frame.executable),
+            runtime_start_address + interpreter_state_list_head,
             sizeof(void*),
-            &address_of_code_object);
+            &address_of_interpreter_state);
     if (bytes_read == -1) {
         return -1;
     }
 
-    if (address_of_code_object == 0) {
+    if (address_of_interpreter_state == 0) {
+        PyErr_SetString(PyExc_RuntimeError, "No interpreter state found");
+        return -1;
+    }
+
+    uintptr_t address_of_thread;
+    bytes_read = read_memory(
+            pid,
+            address_of_interpreter_state +
+                local_debug_offsets->interpreter_state.threads_head,
+            sizeof(void*),
+            &address_of_thread);
+    if (bytes_read == -1) {
+        return -1;
+    }
+
+    // No Python frames are available for us (can happen at tear-down).
+    if (address_of_thread != 0) {
+        int err = read_ptr(
+            pid,
+            address_of_thread + local_debug_offsets->thread_state.current_frame,
+            frame);
+        if (err) {
+            return -1;
+        }
         return 0;
     }
-    address_of_code_object &= ~Py_TAG_BITS;
-    return parse_code_object(pid, result, offsets, (void *)address_of_code_object, previous_frame);
+
+    *frame = (uintptr_t)NULL;
+    return 0;
 }
 
 static PyObject*
@@ -540,44 +674,18 @@ get_stack_trace(PyObject* self, PyObject* args)
         return NULL;
     }
 
-    void* runtime_start_address = get_py_runtime(pid);
-    if (runtime_start_address == NULL) {
-        if (!PyErr_Occurred()) {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to get .PyRuntime address");
-        }
-        return NULL;
-    }
-    size_t size = sizeof(struct _Py_DebugOffsets);
+    uintptr_t runtime_start_address = get_py_runtime(pid);
     struct _Py_DebugOffsets local_debug_offsets;
 
-    ssize_t bytes_read = read_memory(pid, runtime_start_address, size, &local_debug_offsets);
-    if (bytes_read == -1) {
-        return NULL;
-    }
-    off_t interpreter_state_list_head = local_debug_offsets.runtime_state.interpreters_head;
-
-    void* address_of_interpreter_state;
-    bytes_read = read_memory(
-            pid,
-            (void*)(runtime_start_address + interpreter_state_list_head),
-            sizeof(void*),
-            &address_of_interpreter_state);
-    if (bytes_read == -1) {
+    if (read_offsets(pid, &runtime_start_address, &local_debug_offsets)) {
         return NULL;
     }
 
-    if (address_of_interpreter_state == NULL) {
-        PyErr_SetString(PyExc_RuntimeError, "No interpreter state found");
-        return NULL;
-    }
-
-    void* address_of_thread;
-    bytes_read = read_memory(
-            pid,
-            (void*)(address_of_interpreter_state + local_debug_offsets.interpreter_state.threads_head),
-            sizeof(void*),
-            &address_of_thread);
-    if (bytes_read == -1) {
+    uintptr_t address_of_current_frame;
+    if (find_running_frame(
+        pid, runtime_start_address, &local_debug_offsets,
+        &address_of_current_frame)
+    ) {
         return NULL;
     }
 
@@ -585,27 +693,17 @@ get_stack_trace(PyObject* self, PyObject* args)
     if (result == NULL) {
         return NULL;
     }
-
-    // No Python frames are available for us (can happen at tear-down).
-    if (address_of_thread != NULL) {
-        void* address_of_current_frame;
-        (void)read_memory(
-                pid,
-                (void*)(address_of_thread + local_debug_offsets.thread_state.current_frame),
-                sizeof(void*),
-                &address_of_current_frame);
-        while (address_of_current_frame != NULL) {
-            if (parse_frame_object(
-                        pid,
-                        result,
-                        &local_debug_offsets,
-                        address_of_current_frame,
-                        &address_of_current_frame)
-                < 0)
-            {
-                Py_DECREF(result);
-                return NULL;
-            }
+    while ((void*)address_of_current_frame != NULL) {
+        if (parse_frame_object(
+                    pid,
+                    result,
+                    &local_debug_offsets,
+                    address_of_current_frame,
+                    &address_of_current_frame)
+            < 0)
+        {
+            Py_DECREF(result);
+            return NULL;
         }
     }
 

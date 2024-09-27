@@ -22,52 +22,6 @@ module _asyncio
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=8fd17862aa989c69]*/
 
-typedef enum {
-    STATE_PENDING,
-    STATE_CANCELLED,
-    STATE_FINISHED
-} fut_state;
-
-#define FutureObj_HEAD(prefix)                                              \
-    PyObject_HEAD                                                           \
-    PyObject *prefix##_loop;                                                \
-    PyObject *prefix##_callback0;                                           \
-    PyObject *prefix##_context0;                                            \
-    PyObject *prefix##_callbacks;                                           \
-    PyObject *prefix##_exception;                                           \
-    PyObject *prefix##_exception_tb;                                        \
-    PyObject *prefix##_result;                                              \
-    PyObject *prefix##_source_tb;                                           \
-    PyObject *prefix##_cancel_msg;                                          \
-    PyObject *prefix##_cancelled_exc;                                       \
-    PyObject *prefix##_awaited_by;                                          \
-    fut_state prefix##_state;                                               \
-    /* These bitfields need to be at the end of the struct
-       so that these and bitfields from TaskObj are contiguous.
-    */                                                                      \
-    unsigned prefix##_log_tb: 1;                                            \
-    unsigned prefix##_blocking: 1;                                          \
-    /* Used by profilers to make traversing the stack from an external      \
-       process faster. */                                                   \
-    unsigned prefix##_is_task: 1;                                           \
-    unsigned prefix##_awaited_by_is_set: 1;
-
-typedef struct {
-    FutureObj_HEAD(fut)
-} FutureObj;
-
-typedef struct TaskObj {
-    FutureObj_HEAD(task)
-    unsigned task_must_cancel: 1;
-    unsigned task_log_destroy_pending: 1;
-    int task_num_cancels_requested;
-    PyObject *task_fut_waiter;
-    PyObject *task_coro;
-    PyObject *task_name;
-    PyObject *task_context;
-    struct TaskObj *next;
-    struct TaskObj *prev;
-} TaskObj;
 
 typedef struct {
     PyObject_HEAD
@@ -259,6 +213,7 @@ set_task_coro(TaskObj *task, PyObject *coro)
     assert(coro != NULL);
     if (PyCoro_CheckExact(coro)) {
         _PyCoro_SetTask(coro, (PyObject *)task);
+        printf("SET %p\n", task);
     }
     Py_INCREF(coro);
     Py_XSETREF(task->task_coro, coro);
