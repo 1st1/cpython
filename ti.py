@@ -6,4 +6,17 @@ print('sync:')
 print(e.get_stack_trace(int(sys.argv[1])))
 
 print('\n\nasync:')
-pprint.pp(e.get_async_stack_trace(int(sys.argv[1])))
+pid = int(sys.argv[1])
+
+pprint.pp(e.get_async_stack_trace(pid))
+
+
+print()
+print()
+
+import time
+started = time.monotonic_ns()
+N = 200
+for _ in range(N):
+    e.get_async_stack_trace(pid)
+print(f'iterations={N}', f'{(time.monotonic_ns() - started) / N}ns')
