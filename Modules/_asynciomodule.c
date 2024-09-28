@@ -16,12 +16,61 @@
 
 #include <stddef.h>               // offsetof()
 
+#if defined(__APPLE__)
+#  include <mach-o/loader.h>
+#endif
 
 /*[clinic input]
 module _asyncio
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=8fd17862aa989c69]*/
 
+typedef enum {
+    STATE_PENDING,
+    STATE_CANCELLED,
+    STATE_FINISHED
+} fut_state;
+
+#define FutureObj_HEAD(prefix)                                              \
+    PyObject_HEAD                                                           \
+    PyObject *prefix##_loop;                                                \
+    PyObject *prefix##_callback0;                                           \
+    PyObject *prefix##_context0;                                            \
+    PyObject *prefix##_callbacks;                                           \
+    PyObject *prefix##_exception;                                           \
+    PyObject *prefix##_exception_tb;                                        \
+    PyObject *prefix##_result;                                              \
+    PyObject *prefix##_source_tb;                                           \
+    PyObject *prefix##_cancel_msg;                                          \
+    PyObject *prefix##_cancelled_exc;                                       \
+    PyObject *prefix##_awaited_by;                                          \
+    fut_state prefix##_state;                                               \
+    /* Used by profilers to make traversing the stack from an external      \
+       process faster. */                                                   \
+    char prefix##_is_task;                                                  \
+    char prefix##_awaited_by_is_set;                                        \
+    /* These bitfields need to be at the end of the struct                  \
+       so that these and bitfields from TaskObj are contiguous.             \
+    */                                                                      \
+    unsigned prefix##_log_tb: 1;                                            \
+    unsigned prefix##_blocking: 1;
+
+typedef struct {
+    FutureObj_HEAD(fut)
+} FutureObj;
+
+typedef struct TaskObj {
+    FutureObj_HEAD(task)
+    unsigned task_must_cancel: 1;
+    unsigned task_log_destroy_pending: 1;
+    int task_num_cancels_requested;
+    PyObject *task_fut_waiter;
+    PyObject *task_coro;
+    PyObject *task_name;
+    PyObject *task_context;
+    struct TaskObj *next;
+    struct TaskObj *prev;
+} TaskObj;
 
 typedef struct {
     PyObject_HEAD
@@ -56,6 +105,47 @@ typedef struct {
 #endif
 
 typedef struct futureiterobject futureiterobject;
+
+
+typedef struct _Py_AsyncioModuleDebugOffsets {
+    struct _asyncio_task_object {
+        uint64_t size;
+        uint64_t task_name;
+        uint64_t task_awaited_by;
+        uint64_t task_is_task;
+        uint64_t task_awaited_by_is_set;
+        uint64_t task_coro;
+    } asyncio_task_object;
+} Py_AsyncioModuleDebugOffsets;
+
+#if defined(MS_WINDOWS)
+
+#pragma section("AsyncioDebug", read, write)
+__declspec(allocate("AsyncioDebug"))
+
+#elif defined(__APPLE__)
+
+__attribute__((
+    section(SEG_DATA ",AsyncioDebug")
+))
+
+#endif
+
+Py_AsyncioModuleDebugOffsets AsyncioDebug
+#if defined(__linux__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__ ((section (".AsyncioDebug")))
+#endif
+= {
+    .asyncio_task_object = {
+        .size = sizeof(TaskObj),
+        .task_name = offsetof(TaskObj, task_name),
+        .task_awaited_by = offsetof(TaskObj, task_awaited_by),
+        .task_is_task = offsetof(TaskObj, task_is_task),
+        .task_awaited_by_is_set = offsetof(TaskObj, task_awaited_by_is_set),
+        .task_coro = offsetof(TaskObj, task_coro),
+    }
+};
+
 
 /* State of the _asyncio module */
 typedef struct {
@@ -3793,6 +3883,7 @@ _asyncio.future_add_to_awaited_by
 
     fut: object
     waiter: object
+    /
 
 Record that `fut` is awaited on by `waiter`.
 
@@ -3801,7 +3892,7 @@ Record that `fut` is awaited on by `waiter`.
 static PyObject *
 _asyncio_future_add_to_awaited_by_impl(PyObject *module, PyObject *fut,
                                        PyObject *waiter)
-/*[clinic end generated code: output=0ab9a1a63389e4df input=29259cdbafe9e7bf]*/
+/*[clinic end generated code: output=0ab9a1a63389e4df input=06e6eaac51f532b9]*/
 {
     asyncio_state *state = get_asyncio_state(module);
     if (future_awaited_by_add(state, fut, waiter)) {
@@ -3815,6 +3906,7 @@ _asyncio.future_discard_from_awaited_by
 
     fut: object
     waiter: object
+    /
 
 Record that `fut` is no longer awaited on by `waiter`.
 
@@ -3823,7 +3915,7 @@ Record that `fut` is no longer awaited on by `waiter`.
 static PyObject *
 _asyncio_future_discard_from_awaited_by_impl(PyObject *module, PyObject *fut,
                                              PyObject *waiter)
-/*[clinic end generated code: output=a03b0b4323b779de input=5d67a3edc79b6094]*/
+/*[clinic end generated code: output=a03b0b4323b779de input=b5f7a39ccd36b5db]*/
 {
     asyncio_state *state = get_asyncio_state(module);
     if (future_awaited_by_discard(state, fut, waiter)) {

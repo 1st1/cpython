@@ -208,15 +208,6 @@ typedef struct _Py_DebugOffsets {
         uint64_t gi_task;
         uint64_t gi_frame_state;
     } gen_object;
-
-    struct _asyncio_task_object {
-        uint64_t size;
-        uint64_t task_name;
-        uint64_t task_awaited_by;
-        uint64_t task_is_task;
-        uint64_t task_awaited_by_is_set;
-        uint64_t task_coro;
-    } asyncio_task_object;
 } _Py_DebugOffsets;
 
 /* Reference tracer state */
