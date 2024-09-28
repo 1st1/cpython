@@ -1231,22 +1231,23 @@ get_async_stack_trace(PyObject* self, PyObject* args)
             goto result_err;
         }
         Py_DECREF(tn);
+
+        PyObject* awaited_by = PyList_New(0);
+        if (awaited_by == NULL) {
+            goto result_err;
+        }
+        if (PyList_Append(result, awaited_by)) {
+            Py_DECREF(awaited_by);
+            goto result_err;
+        }
+
+        if (parse_task_awaited_by(
+            pid, &local_debug_offsets, root_task_addr, awaited_by)
+        ) {
+            goto result_err;
+        }
     }
 
-    PyObject* awaited_by = PyList_New(0);
-    if (awaited_by == NULL) {
-        goto result_err;
-    }
-    if (PyList_Append(result, awaited_by)) {
-        Py_DECREF(awaited_by);
-        goto result_err;
-    }
-
-    if (parse_task_awaited_by(
-        pid, &local_debug_offsets, root_task_addr, awaited_by)
-    ) {
-        goto result_err;
-    }
 
     return result;
 
