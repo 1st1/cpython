@@ -4,6 +4,8 @@ import sys
 import types
 import typing
 
+import dataclasses
+
 from . import events
 from . import futures
 from . import tasks
@@ -24,21 +26,25 @@ __all__ = (
 # top level asyncio namespace, and want to avoid future name clashes.
 
 
-class FrameCallStackEntry(typing.NamedTuple):
+@dataclasses.dataclass
+class FrameCallStackEntry:
     frame: types.FrameType
 
 
-class CoroutineCallStackEntry(typing.NamedTuple):
+@dataclasses.dataclass
+class CoroutineCallStackEntry:
     coroutine: types.CoroutineType
 
 
-class FutureCallStack(typing.NamedTuple):
+@dataclasses.dataclass
+class FutureCallStack:
     future: futures.Future
     call_stack: list[FrameCallStackEntry | CoroutineCallStackEntry]
     awaited_by: list[FutureCallStack]
+    awaiting_on: list[FutureCallStack]
 
 
-def _build_stack_for_future(future: any) -> FutureCallStack:
+def _build_stack_for_future(future: any, down_dir=True, both=False) -> FutureCallStack:
     if not isinstance(future, futures.Future):
         raise TypeError(
             f"{future!r} object does not appear to be compatible "
@@ -53,7 +59,6 @@ def _build_stack_for_future(future: any) -> FutureCallStack:
         coro = get_coro()
 
     st: list[CoroutineCallStackEntry] = []
-    awaited_by: list[FutureCallStack] = []
 
     while coro is not None:
         if hasattr(coro, 'cr_await'):
@@ -67,12 +72,22 @@ def _build_stack_for_future(future: any) -> FutureCallStack:
         else:
             break
 
-    if fut_waiters := getattr(future, '_asyncio_awaited_by', None):
-        for parent in fut_waiters:
-            awaited_by.append(_build_stack_for_future(parent))
-
     st.reverse()
-    return FutureCallStack(future, st, awaited_by)
+
+    awaited_by: list[FutureCallStack] = []
+    awaitig_on: list[FutureCallStack] = []
+
+    if down_dir or both:
+        if fut_waiters := getattr(future, '_asyncio_awaited_by', None):
+            for parent in fut_waiters:
+                awaited_by.append(_build_stack_for_future(parent))
+
+    if (not down_dir) or both:
+        if fut_waiters := getattr(future, '_asyncio_awaiting_on', None):
+            for parent in fut_waiters:
+                awaitig_on.append(_build_stack_for_future(parent, down_dir=False))
+
+    return FutureCallStack(future, st, awaited_by, awaitig_on)
 
 
 def capture_call_stack(*, future: any = None) -> FutureCallStack | None:
@@ -112,7 +127,7 @@ def capture_call_stack(*, future: any = None) -> FutureCallStack | None:
         # if yes - check if the passed future is the currently
         # running task or not.
         if loop is None or future is not tasks.current_task(loop=loop):
-            return _build_stack_for_future(future)
+            return _build_stack_for_future(future, both=True)
         # else: future is the current task, move on.
     else:
         if loop is None:
@@ -153,12 +168,17 @@ def capture_call_stack(*, future: any = None) -> FutureCallStack | None:
     finally:
         del f
 
+    awaiting_on = []
+    if fut_waiters := getattr(future, '_asyncio_awaiting_on', None):
+        for parent in fut_waiters:
+            awaiting_on.append(_build_stack_for_future(parent, down_dir=False))
+
     awaited_by = []
     if fut_waiters := getattr(future, '_asyncio_awaited_by', None):
         for parent in fut_waiters:
             awaited_by.append(_build_stack_for_future(parent))
 
-    return FutureCallStack(future, call_stack, awaited_by)
+    return FutureCallStack(future, call_stack, awaited_by, awaiting_on)
 
 
 def print_call_stack(*, future: any = None, file=None) -> None:
@@ -220,6 +240,13 @@ def print_call_stack(*, future: any = None, file=None) -> None:
                 f'  + Awaited by:'
             )
             for fut in st.awaited_by:
+                render_level(fut, buf, level + 1)
+
+        if st.awaiting_on:
+            add_line(
+                f'  + Awaiting on:'
+            )
+            for fut in st.awaiting_on:
                 render_level(fut, buf, level + 1)
 
     stack = capture_call_stack(future=future)

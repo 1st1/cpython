@@ -41,6 +41,7 @@ typedef enum {
     PyObject *prefix##_cancel_msg;                                          \
     PyObject *prefix##_cancelled_exc;                                       \
     PyObject *prefix##_awaited_by;                                          \
+    PyObject *prefix##_awaiting_on;                                         \
     fut_state prefix##_state;                                               \
     /* These bitfields need to be at the end of the struct
        so that these and bitfields from TaskObj are contiguous.
@@ -50,7 +51,8 @@ typedef enum {
     /* Used by profilers to make traversing the stack from an external      \
        process faster. */                                                   \
     unsigned prefix##_is_task: 1;                                           \
-    unsigned prefix##_awaited_by_is_set: 1;
+    unsigned prefix##_awaited_by_is_set: 1;                                 \
+    unsigned prefix##_awaiting_on_is_set: 1;
 
 typedef struct {
     FutureObj_HEAD(fut)
@@ -514,11 +516,13 @@ future_init(FutureObj *fut, PyObject *loop)
     Py_CLEAR(fut->fut_cancel_msg);
     Py_CLEAR(fut->fut_cancelled_exc);
     Py_CLEAR(fut->fut_awaited_by);
+    Py_CLEAR(fut->fut_awaiting_on);
 
     fut->fut_state = STATE_PENDING;
     fut->fut_log_tb = 0;
     fut->fut_blocking = 0;
     fut->fut_awaited_by_is_set = 0;
+    fut->fut_awaiting_on_is_set = 0;
     fut->fut_is_task = 0;
 
     if (loop == Py_None) {
@@ -560,7 +564,7 @@ future_init(FutureObj *fut, PyObject *loop)
 }
 
 static int
-future_awaited_by_add(asyncio_state *state, PyObject *fut, PyObject *thing)
+_future_awaited_by_add(asyncio_state *state, PyObject *fut, PyObject *thing)
 {
     if (!TaskOrFuture_Check(state, fut) || !TaskOrFuture_Check(state, thing)) {
         // We only want to support native asyncio Futures.
@@ -604,7 +608,58 @@ future_awaited_by_add(asyncio_state *state, PyObject *fut, PyObject *thing)
 }
 
 static int
-future_awaited_by_discard(asyncio_state *state, PyObject *fut, PyObject *thing)
+_future_awaiting_on_add(asyncio_state *state, PyObject *fut, PyObject *thing)
+{
+    if (!TaskOrFuture_Check(state, fut) || !TaskOrFuture_Check(state, thing)) {
+        // We only want to support native asyncio Futures.
+        // For further insight see the comment in the Python
+        // implementation of "future_add_to_awaiting_on()".
+        return 0;
+    }
+
+    FutureObj *_fut = (FutureObj *)fut;
+
+    /* Most futures/task are only awaited by one entity, so we want
+       to avoid always creating a set for `fut_awaiting_on`.
+    */
+    if (_fut->fut_awaiting_on == NULL) {
+        assert(!_fut->fut_awaiting_on_is_set);
+        Py_INCREF(thing);
+        _fut->fut_awaiting_on = thing;
+        return 0;
+    }
+
+    if (_fut->fut_awaiting_on_is_set) {
+        assert(PySet_Check(_fut->fut_awaiting_on));
+        return PySet_Add(_fut->fut_awaiting_on, thing);
+    }
+
+    PyObject *set = PySet_New(NULL);
+    if (set == NULL) {
+        return -1;
+    }
+    if (PySet_Add(set, thing)) {
+        Py_DECREF(set);
+        return -1;
+    }
+    if (PySet_Add(set, _fut->fut_awaiting_on)) {
+        Py_DECREF(set);
+        return -1;
+    }
+    Py_SETREF(_fut->fut_awaiting_on, set);
+    _fut->fut_awaiting_on_is_set = 1;
+    return 0;
+}
+
+static int
+future_awaited_by_add(asyncio_state *state, PyObject *fut, PyObject *thing)
+{
+    (void)_future_awaited_by_add(state, fut, thing);
+    return _future_awaiting_on_add(state, thing, fut);
+}
+
+static int
+_future_awaited_by_discard(asyncio_state *state, PyObject *fut, PyObject *thing)
 {
     if (!TaskOrFuture_Check(state, fut) || !TaskOrFuture_Check(state, thing)) {
         // We only want to support native asyncio Futures.
@@ -625,7 +680,7 @@ future_awaited_by_discard(asyncio_state *state, PyObject *fut, PyObject *thing)
         Py_CLEAR(_fut->fut_awaited_by);
         return 0;
     }
-    if (_fut->fut_awaited_by_is_set) {
+    if (_fut->fut_awaiting_on_is_set) {
         assert(PySet_Check(_fut->fut_awaited_by));
         int err = PySet_Discard(_fut->fut_awaited_by, thing);
         if (err < 0 && PyErr_Occurred()) {
@@ -636,6 +691,48 @@ future_awaited_by_discard(asyncio_state *state, PyObject *fut, PyObject *thing)
     }
     return 0;
 }
+
+static int
+_future_awaiting_on_discard(asyncio_state *state, PyObject *fut, PyObject *thing)
+{
+    if (!TaskOrFuture_Check(state, fut) || !TaskOrFuture_Check(state, thing)) {
+        // We only want to support native asyncio Futures.
+        // For further insight see the comment in the Python
+        // implementation of "future_add_to_awaiting_on()".
+        return 0;
+    }
+
+    FutureObj *_fut = (FutureObj *)fut;
+
+    /* Following the semantics of 'set.discard()' here in not
+       raising an error if `thing` isn't in the `awaited_by` "set".
+    */
+    if (_fut->fut_awaiting_on == NULL) {
+        return 0;
+    }
+    if (_fut->fut_awaiting_on == thing) {
+        Py_CLEAR(_fut->fut_awaiting_on);
+        return 0;
+    }
+    if (_fut->fut_awaiting_on_is_set) {
+        assert(PySet_Check(_fut->fut_awaiting_on));
+        int err = PySet_Discard(_fut->fut_awaiting_on, thing);
+        if (err < 0 && PyErr_Occurred()) {
+            return -1;
+        } else {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+static int
+future_awaited_by_discard(asyncio_state *state, PyObject *fut, PyObject *thing)
+{
+    (void)_future_awaited_by_discard(state, fut, thing);
+    return _future_awaiting_on_discard(state, thing, fut);
+}
+
 
 static PyObject *
 future_get_awaited_by(FutureObj *fut)
@@ -655,6 +752,30 @@ future_get_awaited_by(FutureObj *fut)
         return NULL;
     }
     if (PySet_Add(set, fut->fut_awaited_by)) {
+        Py_DECREF(set);
+        return NULL;
+    }
+    return set;
+}
+
+static PyObject *
+future_get_awaiting_on(FutureObj *fut)
+{
+    /* Implementation of a Python getter. */
+    if (fut->fut_awaiting_on == NULL) {
+        Py_RETURN_NONE;
+    }
+    if (fut->fut_awaiting_on_is_set) {
+        /* Already a set, just wrap it into a frozen set and return. */
+        assert(PySet_Check(fut->fut_awaiting_on));
+        return PyFrozenSet_New(fut->fut_awaiting_on);
+    }
+
+    PyObject *set = PyFrozenSet_New(NULL);
+    if (set == NULL) {
+        return NULL;
+    }
+    if (PySet_Add(set, fut->fut_awaiting_on)) {
         Py_DECREF(set);
         return NULL;
     }
@@ -948,7 +1069,9 @@ FutureObj_clear(FutureObj *fut)
     Py_CLEAR(fut->fut_cancel_msg);
     Py_CLEAR(fut->fut_cancelled_exc);
     Py_CLEAR(fut->fut_awaited_by);
+    Py_CLEAR(fut->fut_awaiting_on);
     fut->fut_awaited_by_is_set = 0;
+    fut->fut_awaiting_on_is_set = 0;
     PyObject_ClearManagedDict((PyObject *)fut);
     return 0;
 }
@@ -968,6 +1091,7 @@ FutureObj_traverse(FutureObj *fut, visitproc visit, void *arg)
     Py_VISIT(fut->fut_cancel_msg);
     Py_VISIT(fut->fut_cancelled_exc);
     Py_VISIT(fut->fut_awaited_by);
+    Py_VISIT(fut->fut_awaiting_on);
     PyObject_VisitManagedDict((PyObject *)fut, visit, arg);
     return 0;
 }
@@ -1651,7 +1775,8 @@ static PyMethodDef FutureType_methods[] = {
                           NULL, NULL},                                        \
     {"_cancel_message", (getter)FutureObj_get_cancel_message,                 \
                         (setter)FutureObj_set_cancel_message, NULL},          \
-    {"_asyncio_awaited_by", (getter)future_get_awaited_by, NULL, NULL},
+    {"_asyncio_awaited_by", (getter)future_get_awaited_by, NULL, NULL},       \
+    {"_asyncio_awaiting_on", (getter)future_get_awaiting_on, NULL, NULL},
 
 static PyGetSetDef FutureType_getsetlist[] = {
     FUTURE_COMMON_GETSETLIST
@@ -2346,6 +2471,7 @@ TaskObj_traverse(TaskObj *task, visitproc visit, void *arg)
     Py_VISIT(fut->fut_cancel_msg);
     Py_VISIT(fut->fut_cancelled_exc);
     Py_VISIT(fut->fut_awaited_by);
+    Py_VISIT(fut->fut_awaiting_on);
     PyObject_VisitManagedDict((PyObject *)fut, visit, arg);
     return 0;
 }
