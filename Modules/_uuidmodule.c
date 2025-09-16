@@ -106,6 +106,7 @@ typedef struct uuidobject {
     PyObject *cached_int;  // Cached int representation
     PyObject *is_safe;     // SafeUUID enum value
     PyObject *weakreflist; // Weak reference list
+    Py_hash_t cached_hash;        // Hash value
 } uuidobject;
 
 
@@ -479,13 +480,14 @@ from_int(uuidobject *self, PyObject *int_value)
     }
 
     // Convert to bytes (big-endian)
-    if (_PyLong_AsByteArray((PyLongObject *)int_value,
-                           (unsigned char *)self->bytes,
-                           16,
-                           0,  // big-endian
-                           0,  // unsigned
-                           1   // with_exceptions
-                           ) < 0)
+    if (_PyLong_AsByteArray(
+            (PyLongObject *)int_value,
+            (unsigned char *)self->bytes,
+            16,
+            0,  // big-endian
+            0,  // unsigned
+            1   // with_exceptions
+        ) < 0)
     {
         return -1;
     }
@@ -540,6 +542,7 @@ Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->is_safe = NULL;
     self->weakreflist = NULL;
     memset(self->bytes, 0, 16);
+    self->cached_hash = -1;
 
     return (PyObject *)self;
 }
@@ -644,6 +647,30 @@ Uuid_nb_int(PyObject *self)
     return get_int((uuidobject *)self);
 }
 
+static Py_hash_t
+Uuid_hash(PyObject *self)
+{
+    uuidobject *uuid = (uuidobject *)self;
+    if (uuid->cached_hash != -1) {
+        // UUIDs are very often used in dicts/sets, makes
+        // sense to cache the index value to make hashing
+        // as fast as possible.
+        return uuid->cached_hash;
+    }
+
+    PyObject *int_value = get_int(uuid);
+    Py_hash_t hash = PyObject_Hash(int_value);
+    Py_DECREF(int_value);
+
+    if (hash == -1) {
+        return -1;
+    }
+
+    uuid->cached_hash = hash;
+    return hash;
+
+}
+
 static PyType_Slot Uuid_slots[] = {
     {Py_tp_new, Uuid_new},
     {Py_tp_dealloc, Uuid_dealloc},
@@ -652,6 +679,7 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_members, Uuid_members},
     {Py_tp_init, _uuid_UUIDBase___init__},
     {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
+    {Py_tp_hash, Uuid_hash},
     {Py_nb_int, Uuid_nb_int},
     {0, NULL},
 };
