@@ -26,6 +26,13 @@
 
 #ifndef MS_WINDOWS
 
+
+/*[clinic input]
+module _uuid
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=7cbed123a45a3859]*/
+
+
 static PyObject *
 py_uuid_generate_time_safe(PyObject *Py_UNUSED(context),
                            PyObject *Py_UNUSED(ignored))
@@ -108,7 +115,51 @@ typedef struct {
     PyObject *safe_uuid_unknown;
 } uuid_state;
 
+#include "clinic/_uuidmodule.c.h"
 
+/*[clinic input]
+class _uuid.UUIDBase "uuidobject *" "&UuidType"
+[clinic start generated code]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=f8e4c40a12276445]*/
+
+
+/*[clinic input]
+_uuid.UUIDBase.__init__
+
+    hex: 'U' = NULL
+    bytes: 'y*' = None
+    bytes_le: 'y*' = None
+    fields: object = NULL
+    int: object = NULL
+
+UUIDBase is a fast base implementation type for uuid.UUID.
+[clinic start generated code]*/
+
+static int
+_uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
+                             Py_buffer *bytes, Py_buffer *bytes_le,
+                             PyObject *fields, PyObject *int_value)
+/*[clinic end generated code: output=c1e915fca9509416 input=dfa3946b97a91fc7]*/
+
+{
+    int passed = 0;
+    if (hex != NULL) passed++;
+    if (bytes->obj != NULL) passed++;
+    if (bytes_le->obj != NULL) passed++;
+    if (fields != NULL) passed++;
+    if (int_value != NULL) passed++;
+    if (passed != 4) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            "one of the hex, bytes, bytes_le, fields, or int arguments must be given"
+        );
+        return -1;
+    }
+
+    if (hex != NULL) {
+        
+    }
+}
 
 
 static inline uuid_state *
@@ -136,6 +187,8 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_dealloc, Uuid_dealloc},
     {Py_tp_getattro, PyObject_GenericGetAttr},
     {Py_tp_methods, Uuid_methods},
+    {Py_tp_init, _uuid_UUIDBase___init__},
+    {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
     {0, NULL},
 };
 
