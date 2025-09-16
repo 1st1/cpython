@@ -11,7 +11,7 @@
 #include "Python.h"
 #include <string.h>        // for strncasecmp
 
-#include "pycore_long.h"          // _PyLong_FromByteArray
+#include "pycore_long.h"          // _PyLong_FromByteArray, _PyLong_AsByteArray
 #include "pycore_pylifecycle.h"   // _PyOS_URandom()
 
 #if defined(HAVE_UUID_H)
@@ -116,6 +116,9 @@ typedef struct {
     PyObject *safe_uuid_safe;
     PyObject *safe_uuid_unsafe;
     PyObject *safe_uuid_unknown;
+
+    PyObject *uint128_max;
+    PyObject *uint128_min;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -128,6 +131,23 @@ class _uuid.UUIDBase "uuidobject *" "&UuidType"
 // Forward declarations
 static int from_hex(uuidobject *self, PyObject *hex);
 static int from_bytes_le(uuidobject *self, Py_buffer *bytes_le);
+static int from_int(uuidobject *self, PyObject *int_value);
+
+static inline uuid_state *
+get_uuid_state(PyObject *mod)
+{
+    uuid_state *state = PyModule_GetState(mod);
+    assert(state != NULL);
+    return state;
+}
+
+static inline uuid_state *
+get_uuid_state_by_cls(PyTypeObject *cls)
+{
+    uuid_state *state = (uuid_state *)PyType_GetModuleState(cls);
+    assert(state != NULL);
+    return state;
+}
 
 /*[clinic input]
 _uuid.UUIDBase.__init__
@@ -193,9 +213,10 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
         return -1;
     }
     if (int_value != NULL) {
-        PyErr_SetString(PyExc_NotImplementedError,
-                        "int initialization not yet implemented");
-        return -1;
+        if (from_int(self, int_value) < 0) {
+            return -1;
+        }
+        return 0;
     }
 
     // Should never reach here due to passed != 4 check above
@@ -354,6 +375,51 @@ from_bytes_le(uuidobject *self, Py_buffer *bytes_le)
     return 0;
 }
 
+static int
+from_int(uuidobject *self, PyObject *int_value)
+{
+    // Convert a 128-bit integer to UUID bytes (big-endian)
+    // Check that the integer is in valid range (0 to 2^128 - 1)
+
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    // Check if it's less than min (0)
+    int cmp = PyObject_RichCompareBool(int_value, state->uint128_min, Py_LT);
+    if (cmp < 0) {
+        return -1;
+    }
+    if (cmp == 1) {
+        PyErr_SetString(PyExc_ValueError,
+            "int is out of range (need a 128-bit value)");
+        return -1;
+    }
+
+    // Check if it's greater than max (2^128 - 1)
+    cmp = PyObject_RichCompareBool(int_value, state->uint128_max, Py_GT);
+    if (cmp < 0) {
+        return -1;
+    }
+    if (cmp == 1) {
+        PyErr_SetString(PyExc_ValueError,
+            "int is out of range (need a 128-bit value)");
+        return -1;
+    }
+
+    // Convert to bytes (big-endian)
+    if (_PyLong_AsByteArray((PyLongObject *)int_value,
+                           (unsigned char *)self->bytes,
+                           16,
+                           0,  // big-endian
+                           0,  // unsigned
+                           1   // with_exceptions
+                           ) < 0)
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
 static PyObject *
 get_int(uuidobject *self)
 {
@@ -365,15 +431,6 @@ get_int(uuidobject *self)
     }
     return Py_XNewRef(self->cached_int);
 }
-
-static inline uuid_state *
-get_uuid_state(PyObject *mod)
-{
-    uuid_state *state = PyModule_GetState(mod);
-    assert(state != NULL);
-    return state;
-}
-
 
 static PyObject *
 Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
@@ -444,6 +501,11 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
 {
     uuid_state *state = get_uuid_state(mod);
     Py_VISIT(state->UuidType);
+    Py_VISIT(state->safe_uuid_safe);
+    Py_VISIT(state->safe_uuid_unsafe);
+    Py_VISIT(state->safe_uuid_unknown);
+    Py_VISIT(state->uint128_max);
+    Py_VISIT(state->uint128_min);
     return 0;
 }
 
@@ -452,6 +514,11 @@ module_clear(PyObject *mod)
 {
     uuid_state *state = get_uuid_state(mod);
     Py_CLEAR(state->UuidType);
+    Py_CLEAR(state->safe_uuid_safe);
+    Py_CLEAR(state->safe_uuid_unsafe);
+    Py_CLEAR(state->safe_uuid_unknown);
+    Py_CLEAR(state->uint128_max);
+    Py_CLEAR(state->uint128_min);
     return 0;
 }
 
@@ -529,6 +596,17 @@ uuid_exec(PyObject *module)
         goto fail;
     }
     Py_CLEAR(safe_uuid);
+
+    // Import _UINT_128_MAX and _UINT_128_MIN from uuid module
+    state->uint128_max = PyObject_GetAttrString(uuid_mod, "_UINT_128_MAX");
+    if (state->uint128_max == NULL) {
+        goto fail;
+    }
+    state->uint128_min = PyObject_GetAttrString(uuid_mod, "_UINT_128_MIN");
+    if (state->uint128_min == NULL) {
+        goto fail;
+    }
+
     Py_CLEAR(uuid_mod);
 
     return 0;
