@@ -168,11 +168,17 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
         return 0;
     }
 
-    // TODO: Implement other initialization methods
+    // Initialize from bytes
     if (bytes->obj != NULL) {
-        PyErr_SetString(PyExc_NotImplementedError,
-                        "bytes initialization not yet implemented");
-        return -1;
+        if (bytes->len != 16) {
+            PyErr_SetString(
+                PyExc_ValueError,
+                "bytes is not a 16-char string"
+            );
+            return -1;
+        }
+        memcpy(self->bytes, bytes->buf, 16);
+        return 0;
     }
     if (bytes_le->obj != NULL) {
         PyErr_SetString(PyExc_NotImplementedError,
