@@ -159,6 +159,7 @@ _uuid.UUIDBase.__init__
     bytes_le: 'y*' = None
     fields: object = NULL
     int: object = NULL
+    version: object = NULL
 
 UUIDBase is a fast base implementation type for uuid.UUID.
 [clinic start generated code]*/
@@ -166,8 +167,9 @@ UUIDBase is a fast base implementation type for uuid.UUID.
 static int
 _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
                              Py_buffer *bytes, Py_buffer *bytes_le,
-                             PyObject *fields, PyObject *int_value)
-/*[clinic end generated code: output=c1e915fca9509416 input=dfa3946b97a91fc7]*/
+                             PyObject *fields, PyObject *int_value,
+                             PyObject *version)
+/*[clinic end generated code: output=3d63e62fc8141252 input=2818a1b152a69470]*/
 
 {
     int passed = 0;
@@ -181,18 +183,14 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
             PyExc_TypeError,
             "one of the hex, bytes, bytes_le, fields, or int arguments must be given"
         );
-        return -1;
     }
 
     if (hex != NULL) {
         if (from_hex(self, hex) < 0) {
             return -1;
         }
-        return 0;
     }
-
-    // Initialize from bytes
-    if (bytes->obj != NULL) {
+    else if (bytes->obj != NULL) {
         if (bytes->len != 16) {
             PyErr_SetString(
                 PyExc_ValueError,
@@ -201,29 +199,54 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
             return -1;
         }
         memcpy(self->bytes, bytes->buf, 16);
-        return 0;
     }
-    if (bytes_le->obj != NULL) {
+    else if (bytes_le->obj != NULL) {
         if (from_bytes_le(self, bytes_le) < 0) {
             return -1;
         }
-        return 0;
     }
-    if (fields != NULL) {
+    else if (fields != NULL) {
         if (from_fields(self, fields) < 0) {
             return -1;
         }
-        return 0;
     }
-    if (int_value != NULL) {
+    else if (int_value != NULL) {
         if (from_int(self, int_value) < 0) {
             return -1;
         }
-        return 0;
+    }
+    else {
+        Py_UNREACHABLE();
     }
 
-    // Should never reach here due to passed != 4 check above
-    return -1;
+    if (version != NULL) {
+        // Version must be an integer between 1 and 8
+        long version_num = PyLong_AsLong(version);
+        if (version_num == -1 && PyErr_Occurred()) {
+            return -1;
+        }
+        if (version_num < 1 || version_num > 8) {
+            PyErr_SetString(PyExc_ValueError, "illegal version number");
+            return -1;
+        }
+
+        // Clear variant bits (keep only lower 6 bits of byte 8)
+        self->bytes[8] &= 0x3f;  // 0011 1111
+
+        // Clear version bits (keep only lower 4 bits of byte 6)
+        self->bytes[6] &= 0x0f;  // 0000 1111
+
+        // Set the variant to RFC 4122/9562 (binary 10xx xxxx)
+        self->bytes[8] |= 0x80;  // 1000 0000
+
+        // Set the version number (upper 4 bits of byte 6)
+        self->bytes[6] |= (version_num << 4);
+
+        // Clear cached_int if it exists since we modified the bytes
+        Py_CLEAR(self->cached_int);
+    }
+
+    return 0;
 }
 
 // Lookup table for hex character to value conversion
