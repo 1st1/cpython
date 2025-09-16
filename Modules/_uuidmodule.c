@@ -119,6 +119,7 @@ typedef struct {
 
     PyObject *uint128_max;
     PyObject *uint128_min;
+    PyObject *from_fields_func;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -132,6 +133,7 @@ class _uuid.UUIDBase "uuidobject *" "&UuidType"
 static int from_hex(uuidobject *self, PyObject *hex);
 static int from_bytes_le(uuidobject *self, Py_buffer *bytes_le);
 static int from_int(uuidobject *self, PyObject *int_value);
+static int from_fields(uuidobject *self, PyObject *fields);
 
 static inline uuid_state *
 get_uuid_state(PyObject *mod)
@@ -208,9 +210,10 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
         return 0;
     }
     if (fields != NULL) {
-        PyErr_SetString(PyExc_NotImplementedError,
-                        "fields initialization not yet implemented");
-        return -1;
+        if (from_fields(self, fields) < 0) {
+            return -1;
+        }
+        return 0;
     }
     if (int_value != NULL) {
         if (from_int(self, int_value) < 0) {
@@ -417,7 +420,29 @@ from_int(uuidobject *self, PyObject *int_value)
         return -1;
     }
 
+    // Cache the int value since we already have it
+    self->cached_int = Py_NewRef(int_value);
+
     return 0;
+}
+
+static int
+from_fields(uuidobject *self, PyObject *fields)
+{
+    // Call uuid._from_fields() to get the int value
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    PyObject *int_value = PyObject_CallOneArg(state->from_fields_func, fields);
+    if (int_value == NULL) {
+        return -1;
+    }
+
+    // Convert the int to bytes using our existing from_int function
+    // Note: from_int will cache the int_value for us
+    int result = from_int(self, int_value);
+    Py_DECREF(int_value);
+
+    return result;
 }
 
 static PyObject *
@@ -506,6 +531,7 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->safe_uuid_unknown);
     Py_VISIT(state->uint128_max);
     Py_VISIT(state->uint128_min);
+    Py_VISIT(state->from_fields_func);
     return 0;
 }
 
@@ -519,6 +545,7 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->safe_uuid_unknown);
     Py_CLEAR(state->uint128_max);
     Py_CLEAR(state->uint128_min);
+    Py_CLEAR(state->from_fields_func);
     return 0;
 }
 
@@ -604,6 +631,12 @@ uuid_exec(PyObject *module)
     }
     state->uint128_min = PyObject_GetAttrString(uuid_mod, "_UINT_128_MIN");
     if (state->uint128_min == NULL) {
+        goto fail;
+    }
+
+    // Import _from_fields function from uuid module
+    state->from_fields_func = PyObject_GetAttrString(uuid_mod, "_from_fields");
+    if (state->from_fields_func == NULL) {
         goto fail;
     }
 
