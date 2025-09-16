@@ -7,6 +7,7 @@
 #include "pyconfig.h"   // Py_GIL_DISABLED
 #include "Python.h"
 #include <string.h>        // for strncasecmp
+#include "structmember.h"  // for PyMemberDef
 
 #include "pycore_long.h"          // _PyLong_FromByteArray, _PyLong_AsByteArray
 #include "pycore_pylifecycle.h"   // _PyOS_URandom()
@@ -104,6 +105,7 @@ typedef struct uuidobject {
     char bytes[16];
     PyObject *cached_int;  // Cached int representation
     PyObject *is_safe;     // SafeUUID enum value
+    PyObject *weakreflist; // Weak reference list
 } uuidobject;
 
 
@@ -537,6 +539,7 @@ Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 
     self->cached_int = NULL;
     self->is_safe = NULL;
+    self->weakreflist = NULL;
     memset(self->bytes, 0, 16);
 
     return (PyObject *)self;
@@ -546,6 +549,9 @@ static void
 Uuid_dealloc(PyObject *obj)
 {
     uuidobject *uuid = (uuidobject *)obj;
+    if (uuid->weakreflist != NULL) {
+        PyObject_ClearWeakRefs(obj);
+    }
     Py_XDECREF(uuid->cached_int);
     Py_XDECREF(uuid->is_safe);
     PyObject_Free(uuid);
@@ -626,12 +632,18 @@ static PyMethodDef Uuid_methods[] = {
 };
 
 
+static PyMemberDef Uuid_members[] = {
+    {"__weaklistoffset__", Py_T_PYSSIZET, offsetof(uuidobject, weakreflist), Py_READONLY},
+    {NULL}  /* Sentinel */
+};
+
 static PyType_Slot Uuid_slots[] = {
     {Py_tp_new, Uuid_new},
     {Py_tp_dealloc, Uuid_dealloc},
     {Py_tp_getattro, PyObject_GenericGetAttr},
     {Py_tp_methods, Uuid_methods},
     {Py_tp_getset, Uuid_getset},
+    {Py_tp_members, Uuid_members},
     {Py_tp_init, _uuid_UUIDBase___init__},
     {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
     {0, NULL},
