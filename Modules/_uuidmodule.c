@@ -1,7 +1,4 @@
-/*
- * Python UUID module that wraps libuuid or Windows rpcrt4.dll.
- * DCE compatible Universally Unique Identifier library.
- */
+// UUID accelerator base type.
 
 #ifndef Py_BUILD_CORE_BUILTIN
 #  define Py_BUILD_CORE_MODULE 1
@@ -110,6 +107,32 @@ typedef struct uuidobject {
 } uuidobject;
 
 
+// UUID Structure per RFC 9562:
+//
+// A UUID is 128 bits (16 bytes) represented as:
+//
+// String:       xx xx xx xx - xx xx - Mx xx - Nx xx - xx xx xx xx xx xx
+// Byte pos:     0  1  2  3    4  5    6  7    8  9    10 11 12 13 14 15
+//               ^^^^^^^^^^^   ^^^^^   ^^^^^   ^^^^^   ^^^^^^^^^^^^^^^^^
+//                time_low      mid     hi      seq          node
+//
+// Byte Layout (big-endian):
+//
+// Bytes 0-3:   time_low                 (32 bits)
+// Bytes 4-5:   time_mid                 (16 bits)
+// Bytes 6-7:   time_hi_and_version      (16 bits)
+// Bytes 8-9:   clock_seq_and_variant    (16 bits)
+// Bytes 10-15: node                     (48 bits)
+//
+// Version field is located in byte 6, most significant 4 bits
+//
+// Variant field is l ocated in byte 8 most significant bits:
+//   0xxx: Reserved for NCS compatibility
+//   10xx: RFC 4122/9562 (standard)
+//   110x: Reserved for Microsoft compatibility
+//   111x: Reserved for future definition
+
+
 /* State of the _uuid module */
 typedef struct {
     PyTypeObject *UuidType;
@@ -122,6 +145,11 @@ typedef struct {
     PyObject *uint128_max;
     PyObject *uint128_min;
     PyObject *from_fields_func;
+
+    PyObject *reserved_ncs;
+    PyObject *rfc_4122;
+    PyObject *reserved_microsoft;
+    PyObject *reserved_future;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -538,9 +566,58 @@ Uuid_get_is_safe(uuidobject *self, void *closure)
     return Py_NewRef(self->is_safe);
 }
 
+static PyObject *
+Uuid_get_variant(uuidobject *self, void *closure)
+{
+    // Get module state
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    uint8_t variant_byte = self->bytes[8];
+
+    // xxx - three high bits of variant_byte are unknown
+
+    if (!(variant_byte & 0x80)) { // & 0b10000000
+        // 0xx - RESERVED_NCS
+        return Py_NewRef(state->reserved_ncs);
+    }
+
+    // 1xx -- we know that high bit must be 1
+    if (!(variant_byte & 0x40)) { // & 0b01000000
+        // 10x - RFC_4122
+        return Py_NewRef(state->rfc_4122);
+    }
+
+    // 11x -- we know that two high bits are 1
+    if (!(variant_byte & 0x20)) {    // & 0b00100000
+        // 110 - RESERVED_MICROSOFT
+        return Py_NewRef(state->reserved_microsoft);
+    }
+
+    // 111 -- we know that all three high bits are 1 - RESERVED_FUTURE
+    return Py_NewRef(state->reserved_future);
+}
+
+static PyObject *
+Uuid_get_version(uuidobject *self, void *closure)
+{
+    // RFC_4122 is when bit 7 is set (0x80) and bit 6 is not set (0x40)
+    // 0xc0 = 0b11000000
+    // 0x80 = 0b01000000
+    if ((self->bytes[8] & 0xc0) != 0x40) {
+        // Not RFC_4122 variant, no version
+        Py_RETURN_NONE;
+    }
+
+    // Extract version from the upper 4 bits of byte 6
+    int version = (self->bytes[6] >> 4) & 0xf;
+    return PyLong_FromLong(version);
+}
+
 static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
     {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
+    {"variant", (getter)Uuid_get_variant, NULL, "UUID variant", NULL},
+    {"version", (getter)Uuid_get_version, NULL, "UUID version", NULL},
     {NULL}  /* Sentinel */
 };
 
@@ -585,6 +662,10 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->uint128_max);
     Py_VISIT(state->uint128_min);
     Py_VISIT(state->from_fields_func);
+    Py_VISIT(state->reserved_ncs);
+    Py_VISIT(state->rfc_4122);
+    Py_VISIT(state->reserved_microsoft);
+    Py_VISIT(state->reserved_future);
     return 0;
 }
 
@@ -600,6 +681,10 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->uint128_max);
     Py_CLEAR(state->uint128_min);
     Py_CLEAR(state->from_fields_func);
+    Py_CLEAR(state->reserved_ncs);
+    Py_CLEAR(state->rfc_4122);
+    Py_CLEAR(state->reserved_microsoft);
+    Py_CLEAR(state->reserved_future);
     return 0;
 }
 
@@ -690,6 +775,24 @@ uuid_exec(PyObject *module)
     // Import _from_fields function from uuid module
     state->from_fields_func = PyObject_GetAttrString(uuid_mod, "_from_fields");
     if (state->from_fields_func == NULL) {
+        goto fail;
+    }
+
+    // Import variant constants from uuid module
+    state->reserved_ncs = PyObject_GetAttrString(uuid_mod, "RESERVED_NCS");
+    if (state->reserved_ncs == NULL) {
+        goto fail;
+    }
+    state->rfc_4122 = PyObject_GetAttrString(uuid_mod, "RFC_4122");
+    if (state->rfc_4122 == NULL) {
+        goto fail;
+    }
+    state->reserved_microsoft = PyObject_GetAttrString(uuid_mod, "RESERVED_MICROSOFT");
+    if (state->reserved_microsoft == NULL) {
+        goto fail;
+    }
+    state->reserved_future = PyObject_GetAttrString(uuid_mod, "RESERVED_FUTURE");
+    if (state->reserved_future == NULL) {
         goto fail;
     }
 
