@@ -122,11 +122,13 @@ class _uuid.UUIDBase "uuidobject *" "&UuidType"
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=f8e4c40a12276445]*/
 
+// Forward declaration
+static int from_hex(uuidobject *self, const char *hex);
 
 /*[clinic input]
 _uuid.UUIDBase.__init__
 
-    hex: 'U' = NULL
+    hex: 's' = NULL
     bytes: 'y*' = None
     bytes_le: 'y*' = None
     fields: object = NULL
@@ -136,10 +138,10 @@ UUIDBase is a fast base implementation type for uuid.UUID.
 [clinic start generated code]*/
 
 static int
-_uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
+_uuid_UUIDBase___init___impl(uuidobject *self, const char *hex,
                              Py_buffer *bytes, Py_buffer *bytes_le,
                              PyObject *fields, PyObject *int_value)
-/*[clinic end generated code: output=c1e915fca9509416 input=dfa3946b97a91fc7]*/
+/*[clinic end generated code: output=87d25417b29e6d77 input=69989e009b9a7dad]*/
 
 {
     int passed = 0;
@@ -148,7 +150,7 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
     if (bytes_le->obj != NULL) passed++;
     if (fields != NULL) passed++;
     if (int_value != NULL) passed++;
-    if (passed != 4) {
+    if (passed != 1) {
         PyErr_SetString(
             PyExc_TypeError,
             "one of the hex, bytes, bytes_le, fields, or int arguments must be given"
@@ -157,8 +159,119 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
     }
 
     if (hex != NULL) {
-        
+        if (from_hex(self, hex) < 0) {
+            return -1;
+        }
+        return 0;
     }
+
+    // TODO: Implement other initialization methods
+    if (bytes->obj != NULL) {
+        PyErr_SetString(PyExc_NotImplementedError,
+                        "bytes initialization not yet implemented");
+        return -1;
+    }
+    if (bytes_le->obj != NULL) {
+        PyErr_SetString(PyExc_NotImplementedError,
+                        "bytes_le initialization not yet implemented");
+        return -1;
+    }
+    if (fields != NULL) {
+        PyErr_SetString(PyExc_NotImplementedError,
+                        "fields initialization not yet implemented");
+        return -1;
+    }
+    if (int_value != NULL) {
+        PyErr_SetString(PyExc_NotImplementedError,
+                        "int initialization not yet implemented");
+        return -1;
+    }
+
+    // Should never reach here due to passed != 4 check above
+    return -1;
+}
+
+// Lookup table for hex character to value conversion
+// -1 for invalid characters
+static const int8_t _hextable[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1, 0,1,2,3,4,5,6,7,8,9,-1,-1,-1,-1,-1,-1,-1,10,11,12,13,14,15,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,10,11,12,13,14,15,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+};
+
+static int
+from_hex(uuidobject *self, const char *hex)
+{
+    Py_ssize_t size = strlen(hex);
+    uint8_t ch;
+    uint8_t acc, part, acc_set;
+    int i, j;
+
+    // Check size constraints - UUID hex string should be 32-36 chars
+    // (32 hex digits + up to 4 hyphens)
+    if (size > 36 || size < 32) {
+        PyErr_Format(PyExc_ValueError,
+            "invalid UUID '%s': "
+            "length must be between 32..36 characters, got %zd",
+            hex, size);
+        return -1;
+    }
+
+    acc_set = 0;
+    j = 0;
+
+    for (i = 0; i < size; i++) {
+        ch = (uint8_t)hex[i];
+
+        // Skip hyphens
+        if (ch == '-') {
+            continue;
+        }
+
+        // Look up hex value
+        part = (uint8_t)(int8_t)_hextable[ch];
+        if (part == (uint8_t)-1) {
+            PyErr_Format(PyExc_ValueError,
+                "invalid UUID '%r': unexpected character",
+                hex);
+            return -1;
+        }
+
+        if (acc_set) {
+            acc |= part;
+            self->bytes[j] = (char)acc;
+            acc_set = 0;
+            j++;
+        }
+        else {
+            acc = (uint8_t)(part << 4);
+            acc_set = 1;
+        }
+
+        if (j > 16 || (j == 16 && acc_set)) {
+            PyErr_Format(PyExc_ValueError,
+                "invalid UUID '%s': decodes to more than 16 bytes",
+                hex);
+            return -1;
+        }
+    }
+
+    if (j != 16) {
+        PyErr_Format(PyExc_ValueError,
+            "invalid UUID '%s': decodes to less than 16 bytes",
+            hex);
+        return -1;
+    }
+
+    return 0;
 }
 
 
