@@ -106,6 +106,7 @@ typedef struct uuidobject {
     PyObject_HEAD
     char bytes[16];
     PyObject *cached_int;  // Cached int representation
+    PyObject *is_safe;     // SafeUUID enum value
 } uuidobject;
 
 
@@ -113,6 +114,7 @@ typedef struct uuidobject {
 typedef struct {
     PyTypeObject *UuidType;
 
+    PyObject *safe_uuid;
     PyObject *safe_uuid_safe;
     PyObject *safe_uuid_unsafe;
     PyObject *safe_uuid_unknown;
@@ -160,6 +162,7 @@ _uuid.UUIDBase.__init__
     fields: object = NULL
     int: object = NULL
     version: object = NULL
+    is_safe: object = NULL
 
 UUIDBase is a fast base implementation type for uuid.UUID.
 [clinic start generated code]*/
@@ -168,10 +171,12 @@ static int
 _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
                              Py_buffer *bytes, Py_buffer *bytes_le,
                              PyObject *fields, PyObject *int_value,
-                             PyObject *version)
-/*[clinic end generated code: output=3d63e62fc8141252 input=2818a1b152a69470]*/
+                             PyObject *version, PyObject *is_safe)
+/*[clinic end generated code: output=0620020f183160d6 input=df7dd75f435f81ce]*/
 
 {
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
     int passed = 0;
     if (hex != NULL) passed++;
     if (bytes->obj != NULL) passed++;
@@ -244,6 +249,18 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
 
         // Clear cached_int if it exists since we modified the bytes
         Py_CLEAR(self->cached_int);
+    }
+
+    if (is_safe != NULL) {
+        // Validate by calling SafeUUID(is_safe) to ensure it's a valid enum member
+        PyObject *validated = PyObject_CallOneArg(state->safe_uuid, is_safe);
+        if (validated == NULL) {
+            return -1;
+        }
+        self->is_safe = validated;  // reuse reference
+    }
+    else {
+        self->is_safe = Py_NewRef(state->safe_uuid_unknown);
     }
 
     return 0;
@@ -490,6 +507,7 @@ Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     }
 
     self->cached_int = NULL;
+    self->is_safe = NULL;
     memset(self->bytes, 0, 16);
 
     return (PyObject *)self;
@@ -500,6 +518,7 @@ Uuid_dealloc(PyObject *obj)
 {
     uuidobject *uuid = (uuidobject *)obj;
     Py_XDECREF(uuid->cached_int);
+    Py_XDECREF(uuid->is_safe);
     PyObject_Free(uuid);
 }
 
@@ -510,8 +529,18 @@ Uuid_get_int(uuidobject *self, void *closure)
     return get_int(self);
 }
 
+static PyObject *
+Uuid_get_is_safe(uuidobject *self, void *closure)
+{
+    if (self->is_safe == NULL) {
+        Py_RETURN_NONE;
+    }
+    return Py_NewRef(self->is_safe);
+}
+
 static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
+    {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
     {NULL}  /* Sentinel */
 };
 
@@ -549,6 +578,7 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
 {
     uuid_state *state = get_uuid_state(mod);
     Py_VISIT(state->UuidType);
+    Py_VISIT(state->safe_uuid);
     Py_VISIT(state->safe_uuid_safe);
     Py_VISIT(state->safe_uuid_unsafe);
     Py_VISIT(state->safe_uuid_unknown);
@@ -563,6 +593,7 @@ module_clear(PyObject *mod)
 {
     uuid_state *state = get_uuid_state(mod);
     Py_CLEAR(state->UuidType);
+    Py_CLEAR(state->safe_uuid);
     Py_CLEAR(state->safe_uuid_safe);
     Py_CLEAR(state->safe_uuid_unsafe);
     Py_CLEAR(state->safe_uuid_unknown);
@@ -629,7 +660,7 @@ uuid_exec(PyObject *module)
     if (uuid_mod == NULL) {
         goto fail;
     }
-    safe_uuid = PyObject_GetAttrString(uuid_mod, "SafeUUID");
+    safe_uuid = state->safe_uuid =PyObject_GetAttrString(uuid_mod, "SafeUUID");
     if (safe_uuid == NULL) {
         goto fail;
     }
@@ -645,7 +676,6 @@ uuid_exec(PyObject *module)
     if (state->safe_uuid_unknown == NULL) {
         goto fail;
     }
-    Py_CLEAR(safe_uuid);
 
     // Import _UINT_128_MAX and _UINT_128_MIN from uuid module
     state->uint128_max = PyObject_GetAttrString(uuid_mod, "_UINT_128_MAX");
@@ -664,11 +694,9 @@ uuid_exec(PyObject *module)
     }
 
     Py_CLEAR(uuid_mod);
-
     return 0;
 
 fail:
-    Py_CLEAR(safe_uuid);
     Py_CLEAR(uuid_mod);
     return -1;
 }
