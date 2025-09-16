@@ -16,7 +16,7 @@ PyDoc_STRVAR(_uuid_UUIDBase___init____doc__,
 "UUIDBase is a fast base implementation type for uuid.UUID.");
 
 static int
-_uuid_UUIDBase___init___impl(uuidobject *self, const char *hex,
+_uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
                              Py_buffer *bytes, Py_buffer *bytes_le,
                              PyObject *fields, PyObject *int_value);
 
@@ -55,7 +55,7 @@ _uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject * const *fastargs;
     Py_ssize_t nargs = PyTuple_GET_SIZE(args);
     Py_ssize_t noptargs = nargs + (kwargs ? PyDict_GET_SIZE(kwargs) : 0) - 0;
-    const char *hex = NULL;
+    PyObject *hex = NULL;
     Py_buffer bytes = {NULL, NULL};
     Py_buffer bytes_le = {NULL, NULL};
     PyObject *fields = NULL;
@@ -74,15 +74,7 @@ _uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
             _PyArg_BadArgument("UUIDBase", "argument 'hex'", "str", fastargs[0]);
             goto exit;
         }
-        Py_ssize_t hex_length;
-        hex = PyUnicode_AsUTF8AndSize(fastargs[0], &hex_length);
-        if (hex == NULL) {
-            goto exit;
-        }
-        if (strlen(hex) != (size_t)hex_length) {
-            PyErr_SetString(PyExc_ValueError, "embedded null character");
-            goto exit;
-        }
+        hex = fastargs[0];
         if (!--noptargs) {
             goto skip_optional_pos;
         }
@@ -125,4 +117,4 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=1ffdb8bf322891bb input=a9049054013a1b77]*/
+/*[clinic end generated code: output=2178d16ef5960edf input=a9049054013a1b77]*/

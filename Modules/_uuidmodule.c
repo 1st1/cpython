@@ -9,6 +9,7 @@
 
 #include "pyconfig.h"   // Py_GIL_DISABLED
 #include "Python.h"
+#include <string.h>        // for strncasecmp
 
 #include "pycore_pylifecycle.h"   // _PyOS_URandom()
 
@@ -123,12 +124,12 @@ class _uuid.UUIDBase "uuidobject *" "&UuidType"
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=f8e4c40a12276445]*/
 
 // Forward declaration
-static int from_hex(uuidobject *self, const char *hex);
+static int from_hex(uuidobject *self, PyObject *hex);
 
 /*[clinic input]
 _uuid.UUIDBase.__init__
 
-    hex: 's' = NULL
+    hex: 'U' = NULL
     bytes: 'y*' = None
     bytes_le: 'y*' = None
     fields: object = NULL
@@ -138,10 +139,10 @@ UUIDBase is a fast base implementation type for uuid.UUID.
 [clinic start generated code]*/
 
 static int
-_uuid_UUIDBase___init___impl(uuidobject *self, const char *hex,
+_uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
                              Py_buffer *bytes, Py_buffer *bytes_le,
                              PyObject *fields, PyObject *int_value)
-/*[clinic end generated code: output=87d25417b29e6d77 input=69989e009b9a7dad]*/
+/*[clinic end generated code: output=c1e915fca9509416 input=dfa3946b97a91fc7]*/
 
 {
     int passed = 0;
@@ -208,20 +209,50 @@ static const int8_t _hextable[256] = {
 };
 
 static int
-from_hex(uuidobject *self, const char *hex)
+from_hex(uuidobject *self, PyObject *hex)
 {
-    Py_ssize_t size = strlen(hex);
+    Py_ssize_t size;
+    const char *start = PyUnicode_AsUTF8AndSize(hex, &size);
+    if (start == NULL) {
+        return -1;
+    }
+
     uint8_t ch;
-    uint8_t acc, part, acc_set;
+    uint8_t acc, acc_set;
+    int8_t part;
     int i, j;
 
-    // Check size constraints - UUID hex string should be 32-36 chars
-    // (32 hex digits + up to 4 hyphens)
-    if (size > 36 || size < 32) {
-        PyErr_Format(PyExc_ValueError,
-            "invalid UUID '%s': "
-            "length must be between 32..36 characters, got %zd",
-            hex, size);
+    // Reimplement `hex = hex.replace('urn:', '').replace('uuid:', '')`
+    // Only check for prefixes if string starts with 'u' or 'U'
+    if (size > 0 && start[0] == 'u') {
+        if (size >= 9 && strncasecmp(start, "urn:uuid:", 9) == 0) {
+            start += 9;
+            size -= 9;
+        }
+        else if (size >= 4 && strncasecmp(start, "urn:", 4) == 0) {
+            start += 4;
+            size -= 4;
+        }
+        else if (size >= 5 && strncasecmp(start, "uuid:", 5) == 0) {
+            start += 5;
+            size -= 5;
+        }
+    }
+
+    // Reimplement `hex = hex.strip('{}')`
+    if (size >= 1 && start[0] == '{') {
+        start++;
+        size -= 1;
+    }
+    if (size >= 1 && start[size - 1] == '}') {
+        size -= 1;
+    }
+
+    if (size < 32) {
+        PyErr_SetString(
+            PyExc_ValueError,
+            "badly formed hexadecimal UUID string"
+        );
         return -1;
     }
 
@@ -229,30 +260,29 @@ from_hex(uuidobject *self, const char *hex)
     j = 0;
 
     for (i = 0; i < size; i++) {
-        ch = (uint8_t)hex[i];
+        ch = (uint8_t)start[i];
 
-        // Skip hyphens
         if (ch == '-') {
             continue;
         }
 
-        // Look up hex value
-        part = (uint8_t)(int8_t)_hextable[ch];
-        if (part == (uint8_t)-1) {
-            PyErr_Format(PyExc_ValueError,
-                "invalid UUID '%r': unexpected character",
-                hex);
+        part = _hextable[ch];
+        if (part == -1) {
+            PyErr_SetString(
+                PyExc_ValueError,
+                "badly formed hexadecimal UUID string"
+            );
             return -1;
         }
 
         if (acc_set) {
-            acc |= part;
+            acc |= (uint8_t)part;
             self->bytes[j] = (char)acc;
             acc_set = 0;
             j++;
         }
         else {
-            acc = (uint8_t)(part << 4);
+            acc = (uint8_t)part << 4;
             acc_set = 1;
         }
 
