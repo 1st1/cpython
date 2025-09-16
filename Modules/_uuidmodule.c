@@ -632,25 +632,27 @@ static PyGetSetDef Uuid_getset[] = {
     {NULL}  /* Sentinel */
 };
 
-static PyMethodDef Uuid_methods[] = {
-    {NULL, NULL}        /* Sentinel */
-};
-
 
 static PyMemberDef Uuid_members[] = {
     {"__weaklistoffset__", Py_T_PYSSIZET, offsetof(uuidobject, weakreflist), Py_READONLY},
     {NULL}  /* Sentinel */
 };
 
+static PyObject *
+Uuid_nb_int(PyObject *self)
+{
+    return get_int((uuidobject *)self);
+}
+
 static PyType_Slot Uuid_slots[] = {
     {Py_tp_new, Uuid_new},
     {Py_tp_dealloc, Uuid_dealloc},
     {Py_tp_getattro, PyObject_GenericGetAttr},
-    {Py_tp_methods, Uuid_methods},
     {Py_tp_getset, Uuid_getset},
     {Py_tp_members, Uuid_members},
     {Py_tp_init, _uuid_UUIDBase___init__},
     {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
+    {Py_nb_int, Uuid_nb_int},
     {0, NULL},
 };
 
