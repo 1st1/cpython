@@ -11,6 +11,7 @@
 #include "Python.h"
 #include <string.h>        // for strncasecmp
 
+#include "pycore_long.h"          // _PyLong_FromByteArray
 #include "pycore_pylifecycle.h"   // _PyOS_URandom()
 
 #if defined(HAVE_UUID_H)
@@ -223,17 +224,16 @@ from_hex(uuidobject *self, PyObject *hex)
     int i, j;
 
     // Reimplement `hex = hex.replace('urn:', '').replace('uuid:', '')`
-    // Only check for prefixes if string starts with 'u' or 'U'
     if (size > 0 && start[0] == 'u') {
-        if (size >= 9 && strncasecmp(start, "urn:uuid:", 9) == 0) {
+        if (size >= 9 && strncmp(start, "urn:uuid:", 9) == 0) {
             start += 9;
             size -= 9;
         }
-        else if (size >= 4 && strncasecmp(start, "urn:", 4) == 0) {
+        else if (size >= 4 && strncmp(start, "urn:", 4) == 0) {
             start += 4;
             size -= 4;
         }
-        else if (size >= 5 && strncasecmp(start, "uuid:", 5) == 0) {
+        else if (size >= 5 && strncmp(start, "uuid:", 5) == 0) {
             start += 5;
             size -= 5;
         }
@@ -321,6 +321,17 @@ Uuid_dealloc(PyObject *uuid)
 }
 
 
+static PyObject *
+Uuid_get_int(uuidobject *self, void *closure)
+{
+    return _PyLong_FromByteArray((unsigned char *)self->bytes, 16, 0, 0);
+}
+
+static PyGetSetDef Uuid_getset[] = {
+    {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
+    {NULL}  /* Sentinel */
+};
+
 static PyMethodDef Uuid_methods[] = {
     {NULL, NULL}        /* Sentinel */
 };
@@ -330,6 +341,7 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_dealloc, Uuid_dealloc},
     {Py_tp_getattro, PyObject_GenericGetAttr},
     {Py_tp_methods, Uuid_methods},
+    {Py_tp_getset, Uuid_getset},
     {Py_tp_init, _uuid_UUIDBase___init__},
     {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
     {0, NULL},
