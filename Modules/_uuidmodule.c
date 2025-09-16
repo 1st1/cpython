@@ -124,9 +124,9 @@ typedef struct uuidobject {
 // Bytes 8-9:   clock_seq_and_variant    (16 bits)
 // Bytes 10-15: node                     (48 bits)
 //
-// Version field is located in byte 6, most significant 4 bits
+// Version field is located in byte 6; most significant 4 bits:
 //
-// Variant field is l ocated in byte 8 most significant bits:
+// Variant field is located in byte 8; most significant variable bits:
 //   0xxx: Reserved for NCS compatibility
 //   10xx: RFC 4122/9562 (standard)
 //   110x: Reserved for Microsoft compatibility
@@ -190,6 +190,7 @@ _uuid.UUIDBase.__init__
     fields: object = NULL
     int: object = NULL
     version: object = NULL
+    *
     is_safe: object = NULL
 
 UUIDBase is a fast base implementation type for uuid.UUID.
@@ -200,7 +201,7 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
                              Py_buffer *bytes, Py_buffer *bytes_le,
                              PyObject *fields, PyObject *int_value,
                              PyObject *version, PyObject *is_safe)
-/*[clinic end generated code: output=0620020f183160d6 input=df7dd75f435f81ce]*/
+/*[clinic end generated code: output=0620020f183160d6 input=8a7375a0f9275225]*/
 
 {
     uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
@@ -575,20 +576,19 @@ Uuid_get_variant(uuidobject *self, void *closure)
     uint8_t variant_byte = self->bytes[8];
 
     // xxx - three high bits of variant_byte are unknown
-
-    if (!(variant_byte & 0x80)) { // & 0b10000000
+    if (!(variant_byte & 0x80)) {   // & 0b1000_0000
         // 0xx - RESERVED_NCS
         return Py_NewRef(state->reserved_ncs);
     }
 
     // 1xx -- we know that high bit must be 1
-    if (!(variant_byte & 0x40)) { // & 0b01000000
+    if (!(variant_byte & 0x40)) {   // & 0b0100_0000
         // 10x - RFC_4122
         return Py_NewRef(state->rfc_4122);
     }
 
     // 11x -- we know that two high bits are 1
-    if (!(variant_byte & 0x20)) {    // & 0b00100000
+    if (!(variant_byte & 0x20)) {   // & 0b0010_0000
         // 110 - RESERVED_MICROSOFT
         return Py_NewRef(state->reserved_microsoft);
     }
@@ -602,8 +602,8 @@ Uuid_get_version(uuidobject *self, void *closure)
 {
     // RFC_4122 is when bit 7 is set (0x80) and bit 6 is not set (0x40)
     // 0xc0 = 0b11000000
-    // 0x80 = 0b01000000
-    if ((self->bytes[8] & 0xc0) != 0x40) {
+    // 0x80 = 0b10000000
+    if ((self->bytes[8] & 0xc0) != 0x80) {
         // Not RFC_4122 variant, no version
         Py_RETURN_NONE;
     }

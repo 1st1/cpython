@@ -11,7 +11,7 @@ preserve
 PyDoc_STRVAR(_uuid_UUIDBase___init____doc__,
 "UUIDBase(hex=<unrepresentable>, bytes=None, bytes_le=None,\n"
 "         fields=<unrepresentable>, int=<unrepresentable>,\n"
-"         version=<unrepresentable>, is_safe=<unrepresentable>)\n"
+"         version=<unrepresentable>, *, is_safe=<unrepresentable>)\n"
 "--\n"
 "\n"
 "UUIDBase is a fast base implementation type for uuid.UUID.");
@@ -66,7 +66,7 @@ _uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
     PyObject *is_safe = NULL;
 
     fastargs = _PyArg_UnpackKeywords(_PyTuple_CAST(args)->ob_item, nargs, kwargs, NULL, &_parser,
-            /*minpos*/ 0, /*maxpos*/ 7, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
+            /*minpos*/ 0, /*maxpos*/ 6, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
     if (!fastargs) {
         goto exit;
     }
@@ -117,8 +117,12 @@ _uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
             goto skip_optional_pos;
         }
     }
-    is_safe = fastargs[6];
 skip_optional_pos:
+    if (!noptargs) {
+        goto skip_optional_kwonly;
+    }
+    is_safe = fastargs[6];
+skip_optional_kwonly:
     return_value = _uuid_UUIDBase___init___impl((uuidobject *)self, hex, &bytes, &bytes_le, fields, int_value, version, is_safe);
 
 exit:
@@ -133,4 +137,4 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=77f1ab030784e72f input=a9049054013a1b77]*/
+/*[clinic end generated code: output=d22453feb1be1c5d input=a9049054013a1b77]*/
