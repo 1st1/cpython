@@ -125,8 +125,9 @@ class _uuid.UUIDBase "uuidobject *" "&UuidType"
 [clinic start generated code]*/
 /*[clinic end generated code: output=da39a3ee5e6b4b0d input=f8e4c40a12276445]*/
 
-// Forward declaration
+// Forward declarations
 static int from_hex(uuidobject *self, PyObject *hex);
+static int from_bytes_le(uuidobject *self, Py_buffer *bytes_le);
 
 /*[clinic input]
 _uuid.UUIDBase.__init__
@@ -181,9 +182,10 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
         return 0;
     }
     if (bytes_le->obj != NULL) {
-        PyErr_SetString(PyExc_NotImplementedError,
-                        "bytes_le initialization not yet implemented");
-        return -1;
+        if (from_bytes_le(self, bytes_le) < 0) {
+            return -1;
+        }
+        return 0;
     }
     if (fields != NULL) {
         PyErr_SetString(PyExc_NotImplementedError,
@@ -307,6 +309,47 @@ from_hex(uuidobject *self, PyObject *hex)
             hex);
         return -1;
     }
+
+    return 0;
+}
+
+static int
+from_bytes_le(uuidobject *self, Py_buffer *bytes_le)
+{
+    if (bytes_le->len != 16) {
+        PyErr_SetString(PyExc_ValueError,
+            "bytes_le is not a 16-char string");
+        return -1;
+    }
+
+    // Convert from little-endian to big-endian UUID format
+    // UUID fields in little-endian order need to be byte-swapped:
+    // - time_low (4 bytes)
+    // - time_mid (2 bytes)
+    // - time_hi_version (2 bytes)
+    // - clock_seq_hi_variant (1 byte) - no swap needed
+    // - clock_seq_low (1 byte) - no swap needed
+    // - node (6 bytes) - no swap needed
+
+    unsigned char *src = (unsigned char *)bytes_le->buf;
+    unsigned char *dst = (unsigned char *)self->bytes;
+
+    // Swap time_low (bytes 0-3)
+    dst[0] = src[3];
+    dst[1] = src[2];
+    dst[2] = src[1];
+    dst[3] = src[0];
+
+    // Swap time_mid (bytes 4-5)
+    dst[4] = src[5];
+    dst[5] = src[4];
+
+    // Swap time_hi_version (bytes 6-7)
+    dst[6] = src[7];
+    dst[7] = src[6];
+
+    // Copy clock_seq and node as-is (bytes 8-15)
+    memcpy(dst + 8, src + 8, 8);
 
     return 0;
 }
