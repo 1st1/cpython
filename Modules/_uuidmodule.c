@@ -105,6 +105,7 @@ py_windows_has_stable_node(void)
 typedef struct uuidobject {
     PyObject_HEAD
     char bytes[16];
+    PyObject *cached_int;  // Cached int representation
 } uuidobject;
 
 
@@ -304,6 +305,17 @@ from_hex(uuidobject *self, PyObject *hex)
     return 0;
 }
 
+static PyObject *
+get_int(uuidobject *self)
+{
+    if (self->cached_int == NULL) {
+        self->cached_int = _PyLong_FromByteArray((unsigned char *)self->bytes, 16, 0, 0);
+        if (self->cached_int == NULL) {
+            return NULL;
+        }
+    }
+    return Py_XNewRef(self->cached_int);
+}
 
 static inline uuid_state *
 get_uuid_state(PyObject *mod)
@@ -314,9 +326,26 @@ get_uuid_state(PyObject *mod)
 }
 
 
-static void
-Uuid_dealloc(PyObject *uuid)
+static PyObject *
+Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
+    uuidobject *self;
+    self = (uuidobject *)type->tp_alloc(type, 0);
+    if (self == NULL) {
+        return NULL;
+    }
+
+    self->cached_int = NULL;
+    memset(self->bytes, 0, 16);
+
+    return (PyObject *)self;
+}
+
+static void
+Uuid_dealloc(PyObject *obj)
+{
+    uuidobject *uuid = (uuidobject *)obj;
+    Py_XDECREF(uuid->cached_int);
     PyObject_Free(uuid);
 }
 
@@ -324,7 +353,7 @@ Uuid_dealloc(PyObject *uuid)
 static PyObject *
 Uuid_get_int(uuidobject *self, void *closure)
 {
-    return _PyLong_FromByteArray((unsigned char *)self->bytes, 16, 0, 0);
+    return get_int(self);
 }
 
 static PyGetSetDef Uuid_getset[] = {
@@ -338,6 +367,7 @@ static PyMethodDef Uuid_methods[] = {
 
 
 static PyType_Slot Uuid_slots[] = {
+    {Py_tp_new, Uuid_new},
     {Py_tp_dealloc, Uuid_dealloc},
     {Py_tp_getattro, PyObject_GenericGetAttr},
     {Py_tp_methods, Uuid_methods},
