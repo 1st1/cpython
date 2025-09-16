@@ -98,7 +98,6 @@ class SafeUUID:
     unknown = None
 
 
-_UINT_128_MIN = 0
 _UINT_128_MAX = (1 << 128) - 1
 
 # 128-bit mask to clear the variant and version bits of a UUID integral value

@@ -145,7 +145,6 @@ typedef struct {
     PyObject *safe_uuid_unknown;
 
     PyObject *uint128_max;
-    PyObject *uint128_min;
     PyObject *from_fields_func;
 
     PyObject *reserved_ncs;
@@ -458,7 +457,7 @@ from_int(uuidobject *self, PyObject *int_value)
     uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
 
     // Check if it's less than min (0)
-    int cmp = PyObject_RichCompareBool(int_value, state->uint128_min, Py_LT);
+    int cmp = PyLong_IsNegative(int_value);
     if (cmp < 0) {
         return -1;
     }
@@ -603,20 +602,26 @@ Uuid_get_variant(uuidobject *self, void *closure)
     return Py_NewRef(state->reserved_future);
 }
 
-static PyObject *
-Uuid_get_version(uuidobject *self, void *closure)
+static long
+get_version(uuidobject *self)
 {
     // RFC_4122 is when bit 7 is set (0x80) and bit 6 is not set (0x40)
     // 0xc0 = 0b11000000
     // 0x80 = 0b10000000
     if ((self->bytes[8] & 0xc0) != 0x80) {
-        // Not RFC_4122 variant, no version
+        return -1;
+    }
+    return (self->bytes[6] >> 4) & 0xf;
+}
+
+static PyObject *
+Uuid_get_version(uuidobject *self, void *closure)
+{
+    long ver = get_version(self);
+    if (ver == -1) {
         Py_RETURN_NONE;
     }
-
-    // Extract version from the upper 4 bits of byte 6
-    int version = (self->bytes[6] >> 4) & 0xf;
-    return PyLong_FromLong(version);
+    return PyLong_FromLong(ver);
 }
 
 static PyGetSetDef Uuid_getset[] = {
@@ -672,7 +677,6 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->safe_uuid_unsafe);
     Py_VISIT(state->safe_uuid_unknown);
     Py_VISIT(state->uint128_max);
-    Py_VISIT(state->uint128_min);
     Py_VISIT(state->from_fields_func);
     Py_VISIT(state->reserved_ncs);
     Py_VISIT(state->rfc_4122);
@@ -691,7 +695,6 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->safe_uuid_unsafe);
     Py_CLEAR(state->safe_uuid_unknown);
     Py_CLEAR(state->uint128_max);
-    Py_CLEAR(state->uint128_min);
     Py_CLEAR(state->from_fields_func);
     Py_CLEAR(state->reserved_ncs);
     Py_CLEAR(state->rfc_4122);
@@ -777,10 +780,6 @@ uuid_exec(PyObject *module)
     // Import _UINT_128_MAX and _UINT_128_MIN from uuid module
     state->uint128_max = PyObject_GetAttrString(uuid_mod, "_UINT_128_MAX");
     if (state->uint128_max == NULL) {
-        goto fail;
-    }
-    state->uint128_min = PyObject_GetAttrString(uuid_mod, "_UINT_128_MIN");
-    if (state->uint128_min == NULL) {
         goto fail;
     }
 
