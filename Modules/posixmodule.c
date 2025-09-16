@@ -32,7 +32,7 @@
 #ifndef MS_WINDOWS
 #  include "posixmodule.h"        // _PyLong_FromUid()
 #else
-#  include "pycore_fileutils_windows.h" // _Py_GetFileInformationByName()
+#  include "pyco`re_fileutils_windows.h" // _Py_GetFileInformationByName()
 #  include "osdefs.h"             // SEP
 #  include "winreparse.h"         // _Py_REPARSE_DATA_BUFFER
 #endif

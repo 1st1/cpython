@@ -111,6 +111,19 @@ _RFC_4122_VERSION_7_FLAGS = ((7 << 76) | (0x8000 << 48))
 _RFC_4122_VERSION_8_FLAGS = ((8 << 76) | (0x8000 << 48))
 
 
+# Import optional C extension at toplevel, to help disabling it when testing
+try:
+    import _uuid
+    _generate_time_safe = getattr(_uuid, "generate_time_safe", None)
+    _has_stable_extractable_node = _uuid.has_stable_extractable_node
+    _UuidCreate = getattr(_uuid, "UuidCreate", None)
+except ImportError:
+    _uuid = None
+    _generate_time_safe = None
+    _has_stable_extractable_node = False
+    _UuidCreate = None
+
+
 class UUID:
     """Instances of the UUID class represent UUIDs as specified in RFC 4122.
     UUID objects are immutable, hashable, and usable as dictionary keys.
@@ -627,19 +640,6 @@ def _netstat_getnode():
     """Get the hardware address on Unix by running netstat."""
     # This works on AIX and might work on Tru64 UNIX.
     return _find_mac_under_heading('netstat', '-ian', b'Address')
-
-
-# Import optional C extension at toplevel, to help disabling it when testing
-try:
-    import _uuid
-    _generate_time_safe = getattr(_uuid, "generate_time_safe", None)
-    _has_stable_extractable_node = _uuid.has_stable_extractable_node
-    _UuidCreate = getattr(_uuid, "UuidCreate", None)
-except ImportError:
-    _uuid = None
-    _generate_time_safe = None
-    _has_stable_extractable_node = False
-    _UuidCreate = None
 
 
 def _unix_getnode():

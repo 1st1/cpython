@@ -3,13 +3,15 @@
  * DCE compatible Universally Unique Identifier library.
  */
 
-// Need limited C API version 3.13 for Py_mod_gil
-#include "pyconfig.h"   // Py_GIL_DISABLED
-#ifndef Py_GIL_DISABLED
-#  define Py_LIMITED_API 0x030d0000
+#ifndef Py_BUILD_CORE_BUILTIN
+#  define Py_BUILD_CORE_MODULE 1
 #endif
 
+#include "pyconfig.h"   // Py_GIL_DISABLED
 #include "Python.h"
+
+#include "pycore_pylifecycle.h"   // _PyOS_URandom()
+
 #if defined(HAVE_UUID_H)
   // AIX, FreeBSD, libuuid with pkgconf
   #include <uuid.h>
@@ -91,13 +93,99 @@ py_windows_has_stable_node(void)
 #endif /* MS_WINDOWS */
 
 
+typedef struct uuidobject {
+    PyObject_HEAD
+    char bytes[16];
+} uuidobject;
+
+
+/* State of the _uuid module */
+typedef struct {
+    PyTypeObject *UuidType;
+
+    PyObject *safe_uuid_safe;
+    PyObject *safe_uuid_unsafe;
+    PyObject *safe_uuid_unknown;
+} uuid_state;
+
+
+
+
+static inline uuid_state *
+get_uuid_state(PyObject *mod)
+{
+    uuid_state *state = PyModule_GetState(mod);
+    assert(state != NULL);
+    return state;
+}
+
+
+static void
+Uuid_dealloc(PyObject *uuid)
+{
+    PyObject_Free(uuid);
+}
+
+
+static PyMethodDef Uuid_methods[] = {
+    {NULL, NULL}        /* Sentinel */
+};
+
+
+static PyType_Slot Uuid_slots[] = {
+    {Py_tp_dealloc, Uuid_dealloc},
+    {Py_tp_getattro, PyObject_GenericGetAttr},
+    {Py_tp_methods, Uuid_methods},
+    {0, NULL},
+};
+
+
+static PyType_Spec Uuid_spec = {
+    .name = "_uuid.UUIDBase",
+    .basicsize = sizeof(uuidobject),
+    .flags = (
+        Py_TPFLAGS_DEFAULT
+        | Py_TPFLAGS_BASETYPE
+        | Py_TPFLAGS_IMMUTABLETYPE
+    ),
+    .slots = Uuid_slots,
+};
+
+
+static int
+module_traverse(PyObject *mod, visitproc visit, void *arg)
+{
+    uuid_state *state = get_uuid_state(mod);
+    Py_VISIT(state->UuidType);
+    return 0;
+}
+
+static int
+module_clear(PyObject *mod)
+{
+    uuid_state *state = get_uuid_state(mod);
+    Py_CLEAR(state->UuidType);
+    return 0;
+}
+
+static void
+module_free(void *mod)
+{
+    (void)module_clear((PyObject *)mod);
+}
+
+
 static int
 uuid_exec(PyObject *module)
 {
+    uuid_state *state = get_uuid_state(module);
+    PyObject *uuid_mod = NULL;
+    PyObject *safe_uuid = NULL;
+
 #define ADD_INT(NAME, VALUE)                                        \
     do {                                                            \
         if (PyModule_AddIntConstant(module, (NAME), (VALUE)) < 0) { \
-           return -1;                                               \
+            goto fail;                                              \
         }                                                           \
     } while (0)
 
@@ -119,7 +207,49 @@ uuid_exec(PyObject *module)
 #endif
 
 #undef ADD_INT
+
+    state->UuidType = (PyTypeObject *)PyType_FromMetaclass(
+        NULL,
+        module,
+        &Uuid_spec,
+        NULL
+    );
+    if (state->UuidType == NULL) {
+        goto fail;
+    }
+    if (PyModule_AddType(module, state->UuidType) < 0) {
+        goto fail;
+    }
+
+    uuid_mod = PyImport_ImportModule("uuid");
+    if (uuid_mod == NULL) {
+        goto fail;
+    }
+    safe_uuid = PyObject_GetAttrString(uuid_mod, "SafeUUID");
+    if (safe_uuid == NULL) {
+        goto fail;
+    }
+    state->safe_uuid_safe = PyObject_GetAttrString(safe_uuid, "safe");
+    if (state->safe_uuid_safe == NULL) {
+        goto fail;
+    }
+    state->safe_uuid_unsafe = PyObject_GetAttrString(safe_uuid, "unsafe");
+    if (state->safe_uuid_unsafe == NULL) {
+        goto fail;
+    }
+    state->safe_uuid_unknown = PyObject_GetAttrString(safe_uuid, "unknown");
+    if (state->safe_uuid_unknown == NULL) {
+        goto fail;
+    }
+    Py_CLEAR(safe_uuid);
+    Py_CLEAR(uuid_mod);
+
     return 0;
+
+fail:
+    Py_CLEAR(safe_uuid);
+    Py_CLEAR(uuid_mod);
+    return -1;
 }
 
 static PyMethodDef uuid_methods[] = {
@@ -142,9 +272,12 @@ static PyModuleDef_Slot uuid_slots[] = {
 static struct PyModuleDef uuidmodule = {
     PyModuleDef_HEAD_INIT,
     .m_name = "_uuid",
-    .m_size = 0,
+    .m_size = sizeof(uuid_state),
     .m_methods = uuid_methods,
+    .m_traverse = module_traverse,
+    .m_clear = module_clear,
     .m_slots = uuid_slots,
+    .m_free = module_free,
 };
 
 PyMODINIT_FUNC
