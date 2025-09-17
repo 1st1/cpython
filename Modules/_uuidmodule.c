@@ -240,7 +240,6 @@ uuid7_get_counter_and_tail(uint64_t *counter, uint32_t *tail)
 // There's code that modifies the module state (emulating global variables
 // used in the pure Python implementation.) So we're slapping a critical
 // section here to make it easier to reason about the C port of this code.
-
 /*[clinic input]
 @critical_section
 _uuid.uuid7
@@ -719,27 +718,27 @@ from_fields(uuidobject *self, PyObject *fields)
         uint64_t, node
     );
 
-    self->bytes[0] = (time_low >> 24) & 0xff;
-    self->bytes[1] = (time_low >> 16) & 0xff;
-    self->bytes[2] = (time_low >> 8) & 0xff;
-    self->bytes[3] = time_low & 0xff;
+    self->bytes[0] = time_low >> 24;
+    self->bytes[1] = time_low >> 16;
+    self->bytes[2] = time_low >> 8;
+    self->bytes[3] = time_low;
 
-    self->bytes[4] = (time_mid >> 8) & 0xff;
-    self->bytes[5] = time_mid & 0xff;
+    self->bytes[4] = time_mid >> 8;
+    self->bytes[5] = time_mid;
 
-    self->bytes[6] = (time_hi_version >> 8) & 0xff;
-    self->bytes[7] = time_hi_version & 0xff;
+    self->bytes[6] = time_hi_version >> 8;
+    self->bytes[7] = time_hi_version;
 
     self->bytes[8] = clock_seq_hi_variant;
 
     self->bytes[9] = clock_seq_low;
 
-    self->bytes[10] = (node >> 40) & 0xff;
-    self->bytes[11] = (node >> 32) & 0xff;
-    self->bytes[12] = (node >> 24) & 0xff;
-    self->bytes[13] = (node >> 16) & 0xff;
-    self->bytes[14] = (node >> 8) & 0xff;
-    self->bytes[15] = node & 0xff;
+    self->bytes[10] = node >> 40;
+    self->bytes[11] = node >> 32;
+    self->bytes[12] = node >> 24;
+    self->bytes[13] = node >> 16;
+    self->bytes[14] = node >> 8;
+    self->bytes[15] = node;
 
     return 0;
 }
