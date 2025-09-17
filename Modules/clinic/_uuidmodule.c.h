@@ -24,7 +24,13 @@ _uuid_uuid4_impl(PyObject *module);
 static PyObject *
 _uuid_uuid4(PyObject *module, PyObject *Py_UNUSED(ignored))
 {
-    return _uuid_uuid4_impl(module);
+    PyObject *return_value = NULL;
+
+    Py_BEGIN_CRITICAL_SECTION(module);
+    return_value = _uuid_uuid4_impl(module);
+    Py_END_CRITICAL_SECTION();
+
+    return return_value;
 }
 
 PyDoc_STRVAR(_uuid_uuid7__doc__,
@@ -182,4 +188,4 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=ff7c440d51711345 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=7496cb5d47e5dd1b input=a9049054013a1b77]*/

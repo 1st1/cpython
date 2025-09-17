@@ -193,16 +193,16 @@ get_uuid_state_by_cls(PyTypeObject *cls)
 // Forward declaration
 static PyObject *uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16]);
 
-/*[clinic input]
-_uuid.uuid4
-
-Generate a random UUID (version 4).
-[clinic start generated code]*/
-
-
 static int
 gen_random(uuid_state *state, uint8_t *bytes, Py_ssize_t size)
 {
+    // Overfetching & caching entropy improves the performance 10x.
+    // There's a precedent with NodeJS doing exact same thing for
+    // improving performance of their UUID implementation.
+
+    // IMPORTANT: callers should have a critical section or a lock
+    // around this function.
+
     if (state->random_idx + size <= RANDOM_BUF_SIZE) {
         memcpy(bytes, state->random_buf + state->random_idx, size);
         state->random_idx += size;
@@ -217,10 +217,16 @@ gen_random(uuid_state *state, uint8_t *bytes, Py_ssize_t size)
     return 0;
 }
 
+/*[clinic input]
+@critical_section
+_uuid.uuid4
+
+Generate a random UUID (version 4).
+[clinic start generated code]*/
 
 static PyObject *
 _uuid_uuid4_impl(PyObject *module)
-/*[clinic end generated code: output=b835af30d9d6efc5 input=4999b436f9a70891]*/
+/*[clinic end generated code: output=b835af30d9d6efc5 input=9cfb3a3b71c25cdf]*/
 {
     uuid_state *state = get_uuid_state(module);
     uint8_t bytes[16];
@@ -304,6 +310,7 @@ _uuid_uuid7_impl(PyObject *module)
                 return NULL;
             }
         } else {
+            // This is the common fast path, we only need 4 bytes of entropy
             // 32-bit random data
             if (gen_random(state, (uint8_t *)&tail, 4) < 0) {
                 return NULL;
