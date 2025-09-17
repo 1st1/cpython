@@ -744,6 +744,7 @@ extract_field(
     }
 
     *result = value;
+    Py_DECREF(field);
     return 0;
 
 fail:
@@ -905,7 +906,8 @@ Uuid_dealloc(PyObject *obj)
 
     if (!added_to_freelist) {
         type->tp_free(uuid);
-        Py_CLEAR(type);
+        // UUID is a heap allocated type so we have to decref the type ref
+        Py_DECREF(type);
     }
 }
 
@@ -1615,7 +1617,6 @@ module_clear(PyObject *mod)
             uuidobject *cur = state->freelist;
             state->freelist = (uuidobject *)cur->weakreflist;
             PyObject_Free(cur);
-            Py_DECREF(Py_TYPE(state->UuidType));
         }
         state->freelist = NULL;
         state->freelist_size = 0;

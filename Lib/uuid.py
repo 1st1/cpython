@@ -112,6 +112,15 @@ _RFC_4122_VERSION_7_FLAGS = ((7 << 76) | (0x8000 << 48))
 _RFC_4122_VERSION_8_FLAGS = ((8 << 76) | (0x8000 << 48))
 
 
+def _unpickle(state):
+    """Internal function to unpickle a UUID from a state dictionary."""
+    # This is also used by the C extension module for pickle compatibility
+    # with protocols 0 & 1.
+    obj = UUID.__new__(UUID)
+    obj.__setstate__(state)
+    return obj
+
+
 # Import optional C extension at toplevel, to help disabling it when testing
 try:
     import _uuid
@@ -1030,14 +1039,6 @@ NAMESPACE_X500 = UUID('6ba7b814-9dad-11d1-80b4-00c04fd430c8')
 
 NIL = UUID('00000000-0000-0000-0000-000000000000')
 MAX = UUID('ffffffff-ffff-ffff-ffff-ffffffffffff')
-
-def _unpickle(state):
-    """Internal function to unpickle a UUID from a state dictionary."""
-    # This is also used by the C extension module for pickle compatibility
-    # with protocols 0 & 1.
-    obj = UUID.__new__(UUID)
-    obj.__setstate__(state)
-    return obj
 
 if __name__ == "__main__":
     main()
