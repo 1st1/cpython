@@ -936,6 +936,14 @@ def uuid8(a=None, b=None, c=None):
     return UUID._from_int(int_uuid_8)
 
 
+_py_uuid4 = uuid4
+try:
+    from _uuid import uuid4
+except ImportError:
+    pass
+else:
+    _c_uuid4 = uuid4
+
 def main():
     """Run the uuid command line interface."""
     uuid_funcs = {

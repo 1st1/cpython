@@ -183,6 +183,41 @@ get_uuid_state_by_cls(PyTypeObject *cls)
     return state;
 }
 
+// Forward declaration
+static PyObject *uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16]);
+
+/*[clinic input]
+_uuid.uuid4
+
+Generate a random UUID (version 4).
+
+Returns a new UUID with 122 random bits (6 reserved bits for version/variant).
+[clinic start generated code]*/
+
+static PyObject *
+_uuid_uuid4(PyObject *module, PyObject *Py_UNUSED(ignored))
+{
+    uuid_state *state = get_uuid_state(module);
+    uint8_t bytes[16];
+
+    // Generate 16 random bytes
+    if (_PyOS_URandom(bytes, 16) < 0) {
+        PyErr_SetString(PyExc_OSError, "Failed to generate random bytes");
+        return NULL;
+    }
+
+    // Set version (4) and variant (RFC 4122) bits
+    // Version 4: xxxx xxxx xxxx 4xxx (bits 12-15 of time_hi_and_version)
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;  // Clear version bits and set to 0100 (version 4)
+
+    // Variant RFC 4122: 10xx xxxx (bits 6-7 of clock_seq_hi_and_reserved)
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;  // Clear variant bits and set to 10
+
+    // Create and return the UUID object
+    return uuid_from_bytes_array(state->UuidType, bytes);
+}
+/*[clinic end generated code: output=1f3c5864c6e13d22 input=e5f869e61f0db530]*/
+
 /*[clinic input]
 _uuid.UUIDBase.__init__
 
@@ -539,11 +574,10 @@ get_int(uuidobject *self)
     return Py_XNewRef(self->cached_int);
 }
 
-static PyObject *
-Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+static uuidobject *
+make_uuid(PyTypeObject *type)
 {
-    uuidobject *self;
-    self = (uuidobject *)type->tp_alloc(type, 0);
+    uuidobject *self = (uuidobject *)type->tp_alloc(type, 0);
     if (self == NULL) {
         return NULL;
     }
@@ -551,9 +585,16 @@ Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
     self->cached_int = NULL;
     self->is_safe = NULL;
     self->weakreflist = NULL;
-    memset(self->bytes, 0, 16);
     self->cached_hash = -1;
 
+    return self;
+}
+
+static PyObject *
+Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
+{
+    uuidobject *self = make_uuid(type);
+    memset(self->bytes, 0, 16);
     return (PyObject *)self;
 }
 
@@ -813,6 +854,19 @@ Uuid_get_fields(uuidobject *self, void *closure)
                          (unsigned char)clock_seq_hi_variant,
                          (unsigned char)clock_seq_low,
                          (unsigned long long)node);
+}
+
+// Efficient C-level constructor from bytes
+static PyObject *
+uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16])
+{
+
+    uuidobject *self = make_uuid(type);
+    if (self == NULL) {
+        return NULL;
+    }
+    memcpy(self->bytes, bytes, 16);
+    return (PyObject *)self;
 }
 
 static PyObject *
@@ -1172,6 +1226,10 @@ fail:
 }
 
 static PyMethodDef uuid_methods[] = {
+    {"uuid4", _uuid_uuid4, METH_NOARGS,
+     "uuid4() -> UUID\n\n"
+     "Generate a random UUID (version 4).\n\n"
+     "Returns a new UUID with 122 random bits (6 reserved bits for version/variant)."},
 #if defined(HAVE_UUID_UUID_H) || defined(HAVE_UUID_H)
     {"generate_time_safe", py_uuid_generate_time_safe, METH_NOARGS, NULL},
 #endif
