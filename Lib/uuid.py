@@ -240,6 +240,10 @@ class UUID:
                      bytes_le[8-1:6-1:-1] + bytes_le[8:])
             int = int_.from_bytes(bytes)  # big endian
         elif bytes is not None:
+            if not isinstance(bytes, bytes_):
+                raise TypeError(
+                    f'a bytes-like object is required, not {type(bytes).__name__!r}'
+                )
             if len(bytes) != 16:
                 raise ValueError('bytes is not a 16-char string')
             assert isinstance(bytes, bytes_), repr(bytes)

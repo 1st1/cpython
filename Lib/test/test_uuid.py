@@ -282,14 +282,16 @@ class BaseTestUUID:
         badvalue(lambda: self.uuid.UUID('123456781234567812345678z2345678'))
 
         # Badly formed bytes.
-        badvalue(lambda: self.uuid.UUID(bytes='abc'))
-        badvalue(lambda: self.uuid.UUID(bytes='\0'*15))
-        badvalue(lambda: self.uuid.UUID(bytes='\0'*17))
+        badtype(lambda: self.uuid.UUID(bytes='abc'))
+        badvalue(lambda: self.uuid.UUID(bytes=b'abc'))
+        badvalue(lambda: self.uuid.UUID(bytes=b'\0'*15))
+        badvalue(lambda: self.uuid.UUID(bytes=b'\0'*17))
 
         # Badly formed bytes_le.
-        badvalue(lambda: self.uuid.UUID(bytes_le='abc'))
-        badvalue(lambda: self.uuid.UUID(bytes_le='\0'*15))
-        badvalue(lambda: self.uuid.UUID(bytes_le='\0'*17))
+        badtype(lambda: self.uuid.UUID(bytes_le='abc'))
+        badvalue(lambda: self.uuid.UUID(bytes_le=b'abc'))
+        badvalue(lambda: self.uuid.UUID(bytes_le=b'\0'*15))
+        badvalue(lambda: self.uuid.UUID(bytes_le=b'\0'*17))
 
         # Badly formed fields.
         badvalue(lambda: self.uuid.UUID(fields=(1,)))
