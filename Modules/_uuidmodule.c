@@ -1294,6 +1294,13 @@ Uuid_repr(PyObject *self)
     return repr;
 }
 
+static int
+Uuid_setattr(PyObject *self, PyObject *name, PyObject *value)
+{
+    PyErr_SetString(PyExc_TypeError, "UUID objects are immutable");
+    return -1;
+}
+
 static PyObject *
 Uuid_get_urn(uuidobject *self, void *closure)
 {
@@ -1408,6 +1415,7 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_new, Uuid_new},
     {Py_tp_dealloc, Uuid_dealloc},
     {Py_tp_getattro, PyObject_GenericGetAttr},
+    {Py_tp_setattro, Uuid_setattr},
     {Py_tp_getset, Uuid_getset},
     {Py_tp_members, Uuid_members},
     {Py_tp_init, _uuid_UUID___init__},
