@@ -146,7 +146,6 @@ typedef struct {
     PyObject *safe_uuid_unknown;
 
     PyObject *uint128_max;
-    PyObject *from_fields_func;
 
     PyObject *reserved_ncs;
     PyObject *rfc_4122;
@@ -634,21 +633,115 @@ from_int(uuidobject *self, PyObject *int_value)
 }
 
 static int
-from_fields(uuidobject *self, PyObject *fields)
-{
-    // Call uuid._from_fields() to get the int value
-    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
-
-    PyObject *int_value = PyObject_CallOneArg(state->from_fields_func, fields);
-    if (int_value == NULL) {
+extract_field(
+    PyObject *fields,
+    int field_num,
+    uint64_t max_value,
+    const char *error_msg,
+    uint64_t *result
+) {
+    PyObject *field = PySequence_GetItem(fields, field_num);
+    if (field == NULL) {
         return -1;
     }
 
-    // Convert the int to bytes using our existing from_int function
-    int result = from_int(self, int_value);
-    Py_DECREF(int_value);
+    if (!PyLong_Check(field)) {
+        PyErr_Format(PyExc_TypeError, "field %d must be an integer", field_num);
+        goto fail;
+    }
 
-    return result;
+    int overflow;
+    uint64_t value = PyLong_AsLongLongAndOverflow(field, &overflow);
+    if (overflow || (value == (uint64_t)-1 && PyErr_Occurred())) {
+        PyErr_Format(PyExc_ValueError, "%s", error_msg);
+        goto fail;
+    }
+
+    if (value > max_value) {
+        PyErr_Format(PyExc_ValueError, "%s", error_msg);
+        goto fail;
+    }
+
+    *result = value;
+    return 0;
+
+fail:
+    Py_DECREF(field);
+    return -1;
+}
+
+static int
+from_fields(uuidobject *self, PyObject *fields)
+{
+    // Validate that fields is a sequence with exactly 6 elements
+    if (!PySequence_Check(fields)) {
+        PyErr_SetString(PyExc_TypeError, "fields must be a sequence");
+        return -1;
+    }
+
+    Py_ssize_t len = PySequence_Size(fields);
+    if (len != 6) {
+        PyErr_SetString(PyExc_ValueError, "fields is not a 6-tuple");
+        return -1;
+    }
+
+    #define EXTRACT_FIELD(field_num, max_value, error_msg, type, name)          \
+        type name;                                                              \
+        uint64_t name##_extracted;                                              \
+        if (extract_field(fields, field_num, max_value, error_msg,              \
+                          &(name##_extracted)) < 0) {                           \
+            return -1;                                                          \
+        }                                                                       \
+        name = (type)name##_extracted;
+
+    EXTRACT_FIELD(
+        0, (1ULL << 32) - 1, "field 1 out of range (need a 32-bit value)",
+        uint32_t, time_low
+    );
+    EXTRACT_FIELD(
+        1, (1ULL << 16) - 1, "field 2 out of range (need a 16-bit value)",
+        uint16_t, time_mid
+    );
+    EXTRACT_FIELD(
+        2, (1ULL << 16) - 1, "field 3 out of range (need a 16-bit value)",
+        uint16_t, time_hi_version
+    );
+    EXTRACT_FIELD(
+        3, (1ULL << 8) - 1, "field 4 out of range (need an 8-bit value)",
+        uint8_t, clock_seq_hi_variant
+    );
+    EXTRACT_FIELD(
+        4, (1ULL << 8) - 1, "field 5 out of range (need an 8-bit value)",
+        uint8_t, clock_seq_low
+    );
+    EXTRACT_FIELD(
+        5, (1ULL << 48) - 1, "field 6 out of range (need a 48-bit value)",
+        uint64_t, node
+    );
+
+    self->bytes[0] = (time_low >> 24) & 0xff;
+    self->bytes[1] = (time_low >> 16) & 0xff;
+    self->bytes[2] = (time_low >> 8) & 0xff;
+    self->bytes[3] = time_low & 0xff;
+
+    self->bytes[4] = (time_mid >> 8) & 0xff;
+    self->bytes[5] = time_mid & 0xff;
+
+    self->bytes[6] = (time_hi_version >> 8) & 0xff;
+    self->bytes[7] = time_hi_version & 0xff;
+
+    self->bytes[8] = clock_seq_hi_variant;
+
+    self->bytes[9] = clock_seq_low;
+
+    self->bytes[10] = (node >> 40) & 0xff;
+    self->bytes[11] = (node >> 32) & 0xff;
+    self->bytes[12] = (node >> 24) & 0xff;
+    self->bytes[13] = (node >> 16) & 0xff;
+    self->bytes[14] = (node >> 8) & 0xff;
+    self->bytes[15] = node & 0xff;
+
+    return 0;
 }
 
 static PyObject *
@@ -1151,7 +1244,6 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->safe_uuid_unsafe);
     Py_VISIT(state->safe_uuid_unknown);
     Py_VISIT(state->uint128_max);
-    Py_VISIT(state->from_fields_func);
     Py_VISIT(state->reserved_ncs);
     Py_VISIT(state->rfc_4122);
     Py_VISIT(state->reserved_microsoft);
@@ -1169,7 +1261,6 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->safe_uuid_unsafe);
     Py_CLEAR(state->safe_uuid_unknown);
     Py_CLEAR(state->uint128_max);
-    Py_CLEAR(state->from_fields_func);
     Py_CLEAR(state->reserved_ncs);
     Py_CLEAR(state->rfc_4122);
     Py_CLEAR(state->reserved_microsoft);
@@ -1253,11 +1344,6 @@ uuid_exec(PyObject *module)
 
     state->uint128_max = PyObject_GetAttrString(uuid_mod, "_UINT_128_MAX");
     if (state->uint128_max == NULL) {
-        goto fail;
-    }
-
-    state->from_fields_func = PyObject_GetAttrString(uuid_mod, "_from_fields");
-    if (state->from_fields_func == NULL) {
         goto fail;
     }
 

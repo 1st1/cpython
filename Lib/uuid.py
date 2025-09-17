@@ -112,28 +112,6 @@ _RFC_4122_VERSION_7_FLAGS = ((7 << 76) | (0x8000 << 48))
 _RFC_4122_VERSION_8_FLAGS = ((8 << 76) | (0x8000 << 48))
 
 
-def _from_fields(fields):
-    if len(fields) != 6:
-        raise ValueError('fields is not a 6-tuple')
-    (time_low, time_mid, time_hi_version,
-        clock_seq_hi_variant, clock_seq_low, node) = fields
-    if not 0 <= time_low < (1 << 32):
-        raise ValueError('field 1 out of range (need a 32-bit value)')
-    if not 0 <= time_mid < (1 << 16):
-        raise ValueError('field 2 out of range (need a 16-bit value)')
-    if not 0 <= time_hi_version < (1 << 16):
-        raise ValueError('field 3 out of range (need a 16-bit value)')
-    if not 0 <= clock_seq_hi_variant < (1 << 8):
-        raise ValueError('field 4 out of range (need an 8-bit value)')
-    if not 0 <= clock_seq_low < (1 << 8):
-        raise ValueError('field 5 out of range (need an 8-bit value)')
-    if not 0 <= node < (1 << 48):
-        raise ValueError('field 6 out of range (need a 48-bit value)')
-    clock_seq = (clock_seq_hi_variant << 8) | clock_seq_low
-    return ((time_low << 96) | (time_mid << 80) |
-            (time_hi_version << 64) | (clock_seq << 48) | node)
-
-
 # Import optional C extension at toplevel, to help disabling it when testing
 try:
     import _uuid
@@ -267,7 +245,25 @@ class UUID:
             assert isinstance(bytes, bytes_), repr(bytes)
             int = int_.from_bytes(bytes)  # big endian
         elif fields is not None:
-            int = _from_fields(fields)
+            if len(fields) != 6:
+                raise ValueError('fields is not a 6-tuple')
+            (time_low, time_mid, time_hi_version,
+                clock_seq_hi_variant, clock_seq_low, node) = fields
+            if not 0 <= time_low < (1 << 32):
+                raise ValueError('field 1 out of range (need a 32-bit value)')
+            if not 0 <= time_mid < (1 << 16):
+                raise ValueError('field 2 out of range (need a 16-bit value)')
+            if not 0 <= time_hi_version < (1 << 16):
+                raise ValueError('field 3 out of range (need a 16-bit value)')
+            if not 0 <= clock_seq_hi_variant < (1 << 8):
+                raise ValueError('field 4 out of range (need an 8-bit value)')
+            if not 0 <= clock_seq_low < (1 << 8):
+                raise ValueError('field 5 out of range (need an 8-bit value)')
+            if not 0 <= node < (1 << 48):
+                raise ValueError('field 6 out of range (need a 48-bit value)')
+            clock_seq = (clock_seq_hi_variant << 8) | clock_seq_low
+            int = ((time_low << 96) | (time_mid << 80) |
+                    (time_hi_version << 64) | (clock_seq << 48) | node)
         if not 0 <= int <= _UINT_128_MAX:
             raise ValueError('int is out of range (need a 128-bit value)')
         if version is not None:
