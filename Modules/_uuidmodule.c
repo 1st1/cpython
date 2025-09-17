@@ -164,6 +164,8 @@ typedef struct {
     PyObject *reserved_microsoft;
     PyObject *reserved_future;
 
+    PyObject *unpickle;
+
     // UUID v7 state
     uint64_t last_timestamp_v7;
     uint64_t last_counter_v7;
@@ -1489,10 +1491,51 @@ _uuid_UUID___setstate___impl(uuidobject *self, PyObject *state)
     Py_RETURN_NONE;
 }
 
+/*[clinic input]
+_uuid.UUID.__reduce_ex__
+
+    protocol: int
+    /
+
+Helper for pickle protocols 0 and 1.
+
+Returns a tuple suitable for pickling the UUID object.
+[clinic start generated code]*/
+
+static PyObject *
+_uuid_UUID___reduce_ex___impl(uuidobject *self, int protocol)
+/*[clinic end generated code: output=1ea9c5b366233178 input=b0b5be25835550f3]*/
+{
+    // For all protocols, return (uuid._unpickle, (state,))
+    // where _unpickle will create a new UUID and set its state
+
+    uuid_state *mod_state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    PyObject *state = _uuid_UUID___getstate___impl(self);
+    if (state == NULL) {
+        return NULL;
+    }
+
+    // Create args tuple with just the state
+    PyObject *args = PyTuple_Pack(1, state);
+    if (args == NULL) {
+        Py_DECREF(state);
+        return NULL;
+    }
+
+    // Return (unpickle, args)
+    PyObject *result = PyTuple_Pack(2, mod_state->unpickle, args);
+    Py_DECREF(args);
+    Py_DECREF(state);
+
+    return result;
+}
+
 static PyMethodDef Uuid_methods[] = {
     _UUID_UUID__FROM_INT_METHODDEF
     _UUID_UUID___GETSTATE___METHODDEF
     _UUID_UUID___SETSTATE___METHODDEF
+    _UUID_UUID___REDUCE_EX___METHODDEF
     {NULL, NULL}
 };
 
@@ -1674,6 +1717,11 @@ uuid_exec(PyObject *module)
 
     state->reserved_future = PyObject_GetAttrString(uuid_mod, "RESERVED_FUTURE");
     if (state->reserved_future == NULL) {
+        goto fail;
+    }
+
+    state->unpickle = PyObject_GetAttrString(uuid_mod, "_unpickle");
+    if (state->unpickle == NULL) {
         goto fail;
     }
 
