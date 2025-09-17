@@ -766,6 +766,13 @@ Uuid_get_node(uuidobject *self, void *closure)
 }
 
 static PyObject *
+Uuid_get_bytes(uuidobject *self, void *closure)
+{
+    // Return the 16 bytes as a Python bytes object
+    return PyBytes_FromStringAndSize((const char *)self->bytes, 16);
+}
+
+static PyObject *
 Uuid_nb_int(PyObject *self)
 {
     return get_int((uuidobject *)self);
@@ -877,6 +884,7 @@ Uuid_hash(PyObject *self)
 static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
     {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
+    {"bytes", (getter)Uuid_get_bytes, NULL, "UUID as a 16-byte string", NULL},
     {"hex", (getter)Uuid_get_hex, NULL, "UUID as a 32-character hex string", NULL},
     {"urn", (getter)Uuid_get_urn, NULL, "UUID as a URN", NULL},
     {"variant", (getter)Uuid_get_variant, NULL, "UUID variant", NULL},
