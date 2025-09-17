@@ -188,4 +188,26 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=7496cb5d47e5dd1b input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_uuid_UUID__from_int__doc__,
+"_from_int($type, value, /)\n"
+"--\n"
+"\n"
+"Create a UUID from an integer value. Internal use only.");
+
+#define _UUID_UUID__FROM_INT_METHODDEF    \
+    {"_from_int", (PyCFunction)_uuid_UUID__from_int, METH_O|METH_CLASS, _uuid_UUID__from_int__doc__},
+
+static PyObject *
+_uuid_UUID__from_int_impl(PyTypeObject *type, PyObject *value);
+
+static PyObject *
+_uuid_UUID__from_int(PyObject *type, PyObject *value)
+{
+    PyObject *return_value = NULL;
+
+    return_value = _uuid_UUID__from_int_impl((PyTypeObject *)type, value);
+
+    return return_value;
+}
+/*[clinic end generated code: output=eb6c0517adff9763 input=a9049054013a1b77]*/

@@ -189,7 +189,7 @@ class _uuid.UUID "uuidobject *" "&UuidType"
 // Forward declarations
 static int from_hex(uuidobject *self, PyObject *hex);
 static int from_bytes_le(uuidobject *self, Py_buffer *bytes_le);
-static int from_int(uuidobject *self, PyObject *int_value);
+static int from_int(uuidobject *self, PyObject *int_value, int validate);
 static int from_fields(uuidobject *self, PyObject *fields);
 
 static uint64_t
@@ -449,7 +449,7 @@ _uuid_UUID___init___impl(uuidobject *self, PyObject *hex, Py_buffer *bytes,
         }
     }
     else if (int_value != NULL) {
-        if (from_int(self, int_value) < 0) {
+        if (from_int(self, int_value, 1) < 0) {
             return -1;
         }
     }
@@ -483,10 +483,8 @@ _uuid_UUID___init___impl(uuidobject *self, PyObject *hex, Py_buffer *bytes,
         if (validated == NULL) {
             return -1;
         }
+        Py_CLEAR(self->is_safe);
         self->is_safe = validated;  // reuse reference
-    }
-    else {
-        self->is_safe = Py_NewRef(state->safe_uuid_unknown);
     }
 
     return 0;
@@ -655,11 +653,12 @@ from_bytes_le(uuidobject *self, Py_buffer *bytes_le)
 }
 
 static int
-from_int(uuidobject *self, PyObject *int_value)
+validate_int(uuid_state *state, PyObject *int_value)
 {
-    // Convert a 128-bit integer to UUID bytes (big-endian)
-
-    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+    if (!PyLong_Check(int_value)) {
+        PyErr_SetString(PyExc_TypeError, "value must be an integer");
+        return -1;
+    }
 
     int cmp = PyLong_IsNegative(int_value);
     if (cmp < 0) {
@@ -679,6 +678,20 @@ from_int(uuidobject *self, PyObject *int_value)
     if (cmp == 1) {
         PyErr_SetString(PyExc_ValueError,
             "int is out of range (need a 128-bit value)");
+        return -1;
+    }
+
+    return 0;
+}
+
+static int
+from_int(uuidobject *self, PyObject *int_value, int validate)
+{
+    // Convert a 128-bit integer to UUID bytes (big-endian)
+
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    if (validate && validate_int(state, int_value) < 0) {
         return -1;
     }
 
@@ -840,7 +853,13 @@ make_uuid(PyTypeObject *type)
         }
     }
 
-    self->is_safe = NULL;
+    // During module initialization, safe_uuid_unknown might not be set yet
+    if (state->safe_uuid_unknown != NULL) {
+        self->is_safe = Py_NewRef(state->safe_uuid_unknown);
+    } else {
+        self->is_safe = Py_NewRef(Py_None);
+    }
+
     self->weakreflist = NULL;
     self->cached_hash = -1;
 
@@ -851,6 +870,9 @@ static PyObject *
 Uuid_new(PyTypeObject *type, PyObject *args, PyObject *kwargs)
 {
     uuidobject *self = make_uuid(type);
+    if (self == NULL) {
+        return NULL;
+    }
     memset(self->bytes, 0, 16);
     return (PyObject *)self;
 }
@@ -1153,7 +1175,6 @@ Uuid_get_fields(uuidobject *self, void *closure)
     );
 }
 
-// Efficient C-level constructor from bytes
 static PyObject *
 uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16])
 {
@@ -1307,7 +1328,41 @@ Uuid_hash(PyObject *self)
 
     uuid->cached_hash = hash;
     return hash;
+}
 
+
+/*[clinic input]
+@classmethod
+_uuid.UUID._from_int
+
+    value: object
+    /
+
+Create a UUID from an integer value. Internal use only.
+[clinic start generated code]*/
+
+static PyObject *
+_uuid_UUID__from_int_impl(PyTypeObject *type, PyObject *value)
+/*[clinic end generated code: output=05af0cfa4805fcae input=3f472ebfd07bbf50]*/
+{
+    uuid_state *state = get_uuid_state_by_cls(type);
+
+    if (validate_int(state, value) < 0) {
+        return NULL;
+    }
+
+    uuidobject *self = make_uuid(type);
+    if (self == NULL) {
+        return NULL;
+    }
+
+    if (from_int(self, value, 0) < 0) {
+        // We validated before creating an instance, so now we don't need to
+        // validate again
+        return NULL;
+    }
+
+    return (PyObject *)self;
 }
 
 static PyGetSetDef Uuid_getset[] = {
@@ -1338,6 +1393,11 @@ static PyGetSetDef Uuid_getset[] = {
     {NULL}
 };
 
+static PyMethodDef Uuid_methods[] = {
+    _UUID_UUID__FROM_INT_METHODDEF
+    {NULL, NULL}
+};
+
 static PyMemberDef Uuid_members[] = {
     {"__weaklistoffset__", Py_T_PYSSIZET, offsetof(uuidobject, weakreflist), Py_READONLY},
     {NULL}
@@ -1356,6 +1416,7 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_hash, Uuid_hash},
     {Py_tp_richcompare, Uuid_richcompare},
     {Py_nb_int, Uuid_nb_int},
+    {Py_tp_methods, Uuid_methods},
     {0, NULL},
 };
 
