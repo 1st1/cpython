@@ -421,6 +421,7 @@ _uuid_UUID___init___impl(uuidobject *self, PyObject *hex, Py_buffer *bytes,
             PyExc_TypeError,
             "one of the hex, bytes, bytes_le, fields, or int arguments must be given"
         );
+        return -1;
     }
 
     if (hex != NULL) {
