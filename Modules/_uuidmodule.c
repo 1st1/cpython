@@ -904,7 +904,8 @@ Uuid_dealloc(PyObject *obj)
     Py_END_CRITICAL_SECTION();
 
     if (!added_to_freelist) {
-        PyObject_Free(uuid);
+        type->tp_free(uuid);
+        Py_CLEAR(type);
     }
 }
 
@@ -1567,6 +1568,7 @@ static PyType_Spec Uuid_spec = {
     .flags = (
         Py_TPFLAGS_DEFAULT
         | Py_TPFLAGS_BASETYPE
+        | Py_TPFLAGS_HEAPTYPE
         | Py_TPFLAGS_IMMUTABLETYPE
     ),
     .slots = Uuid_slots,
@@ -1613,6 +1615,7 @@ module_clear(PyObject *mod)
             uuidobject *cur = state->freelist;
             state->freelist = (uuidobject *)cur->weakreflist;
             PyObject_Free(cur);
+            Py_DECREF(Py_TYPE(state->UuidType));
         }
         state->freelist = NULL;
         state->freelist_size = 0;
