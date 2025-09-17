@@ -153,7 +153,7 @@ typedef struct {
     PyObject *reserved_microsoft;
     PyObject *reserved_future;
 
-    // UUID v7 state for monotonicity
+    // UUID v7 state
     uint64_t last_timestamp_v7;
     uint64_t last_counter_v7;
 } uuid_state;
@@ -394,7 +394,6 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
     }
 
     if (version != NULL) {
-        // Version must be an integer between 1 and 8
         long version_num = PyLong_AsLong(version);
         if (version_num == -1 && PyErr_Occurred()) {
             return -1;
@@ -406,13 +405,10 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
 
         // Clear variant bits (keep only lower 6 bits of byte 8)
         self->bytes[8] &= 0x3f;  // 0011 1111
-
         // Clear version bits (keep only lower 4 bits of byte 6)
         self->bytes[6] &= 0x0f;  // 0000 1111
-
         // Set the variant to RFC 4122/9562 (binary 10xx xxxx)
         self->bytes[8] |= 0x80;  // 1000 0000
-
         // Set the version number (upper 4 bits of byte 6)
         self->bytes[6] |= (version_num << 4);
     }
@@ -649,7 +645,6 @@ from_fields(uuidobject *self, PyObject *fields)
     }
 
     // Convert the int to bytes using our existing from_int function
-    // Note: from_int will cache the int_value for us
     int result = from_int(self, int_value);
     Py_DECREF(int_value);
 
@@ -715,20 +710,16 @@ Uuid_get_is_safe(uuidobject *self, void *closure)
 static PyObject *
 Uuid_get_hex(uuidobject *self, void *closure)
 {
-    // Convert 16 bytes to 32 hex characters
     char hex[32];
     for (int i = 0; i < 16; i++) {
         byte_to_hex(self->bytes[i], &hex[i * 2]);
     }
-
-    // Return as a Python string
     return PyUnicode_FromStringAndSize(hex, 32);
 }
 
 static PyObject *
 Uuid_get_variant(uuidobject *self, void *closure)
 {
-    // Get module state
     uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
 
     uint8_t variant_byte = self->bytes[8];
@@ -823,7 +814,6 @@ get_node(uuidobject *self)
            ((uint64_t)self->bytes[15]);
 }
 
-// Property getters that use the inline functions
 static PyObject *
 Uuid_get_time_low(uuidobject *self, void *closure)
 {
@@ -883,7 +873,8 @@ Uuid_get_time(uuidobject *self, void *closure)
         return PyLong_FromUnsignedLongLong(unix_ts_ms);
     }
     else {
-        // UUID v1 and others: time_lo (32) | time_mid (16) | ver (4) | time_hi (12) | ... (64)
+        // UUID v1 and others: time_lo (32) | time_mid (16) | ver (4)
+        //                     | time_hi (12) | ... (64)
         uint32_t time_lo = get_time_low(self);
         uint16_t time_mid = get_time_mid(self);
         uint16_t time_hi = ((uint16_t)(self->bytes[6] & 0x0f) << 8) |
@@ -914,17 +905,12 @@ Uuid_get_node(uuidobject *self, void *closure)
 static PyObject *
 Uuid_get_bytes(uuidobject *self, void *closure)
 {
-    // Return the 16 bytes as a Python bytes object
     return PyBytes_FromStringAndSize((const char *)self->bytes, 16);
 }
 
 static PyObject *
 Uuid_get_fields(uuidobject *self, void *closure)
 {
-    // Return a tuple of (time_low, time_mid, time_hi_version,
-    //                     clock_seq_hi_variant, clock_seq_low, node)
-
-    // Use inline functions to get C values directly
     uint32_t time_low = get_time_low(self);
     uint16_t time_mid = get_time_mid(self);
     uint16_t time_hi_version = get_time_hi_version(self);
@@ -933,20 +919,21 @@ Uuid_get_fields(uuidobject *self, void *closure)
     uint64_t node = get_node(self);
 
     // Build and return the tuple
-    return Py_BuildValue("(kHHBBK)",
-                         (unsigned long)time_low,
-                         (unsigned short)time_mid,
-                         (unsigned short)time_hi_version,
-                         (unsigned char)clock_seq_hi_variant,
-                         (unsigned char)clock_seq_low,
-                         (unsigned long long)node);
+    return Py_BuildValue(
+        "(kHHBBK)",
+        (unsigned long)time_low,
+        (unsigned short)time_mid,
+        (unsigned short)time_hi_version,
+        (unsigned char)clock_seq_hi_variant,
+        (unsigned char)clock_seq_low,
+        (unsigned long long)node
+    );
 }
 
 // Efficient C-level constructor from bytes
 static PyObject *
 uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16])
 {
-
     uuidobject *self = make_uuid(type);
     if (self == NULL) {
         return NULL;
@@ -1014,32 +1001,26 @@ Uuid_str(PyObject *self)
     // UUID string format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
     char str[36];
 
-    // Convert bytes to hex with hyphens at the right positions
-    // Bytes 0-3 (8 hex chars)
     for (int i = 0; i < 4; i++) {
         byte_to_hex(uuid->bytes[i], &str[i * 2]);
     }
     str[8] = '-';
 
-    // Bytes 4-5 (4 hex chars)
     for (int i = 4; i < 6; i++) {
         byte_to_hex(uuid->bytes[i], &str[9 + (i - 4) * 2]);
     }
     str[13] = '-';
 
-    // Bytes 6-7 (4 hex chars)
     for (int i = 6; i < 8; i++) {
         byte_to_hex(uuid->bytes[i], &str[14 + (i - 6) * 2]);
     }
     str[18] = '-';
 
-    // Bytes 8-9 (4 hex chars)
     for (int i = 8; i < 10; i++) {
         byte_to_hex(uuid->bytes[i], &str[19 + (i - 8) * 2]);
     }
     str[23] = '-';
 
-    // Bytes 10-15 (12 hex chars)
     for (int i = 10; i < 16; i++) {
         byte_to_hex(uuid->bytes[i], &str[24 + (i - 10) * 2]);
     }
@@ -1050,20 +1031,18 @@ Uuid_str(PyObject *self)
 static PyObject *
 Uuid_repr(PyObject *self)
 {
-    // Get the string representation
     PyObject *str_obj = Uuid_str(self);
     if (str_obj == NULL) {
         return NULL;
     }
 
-    // Get the class name (can't use tp_name -- we don't need full name)
+    // Get the class name (sadly can't use tp_name -- we don't need the full name)
     PyObject *cls_name = PyObject_GetAttrString((PyObject *)Py_TYPE(self), "__name__");
     if (cls_name == NULL) {
         Py_DECREF(str_obj);
         return NULL;
     }
 
-    // Format as "ClassName('...')" matching Python's '%s(%r)' % (self.__class__.__name__, str(self))
     PyObject *repr = PyUnicode_FromFormat("%U('%U')", cls_name, str_obj);
     Py_DECREF(str_obj);
     Py_DECREF(cls_name);
@@ -1073,13 +1052,11 @@ Uuid_repr(PyObject *self)
 static PyObject *
 Uuid_get_urn(uuidobject *self, void *closure)
 {
-    // Get the string representation
     PyObject *str_obj = Uuid_str((PyObject *)self);
     if (str_obj == NULL) {
         return NULL;
     }
 
-    // Prepend "urn:uuid:"
     PyObject *urn = PyUnicode_FromFormat("urn:uuid:%U", str_obj);
     Py_DECREF(str_obj);
     return urn;
@@ -1090,12 +1067,13 @@ Uuid_hash(PyObject *self)
 {
     uuidobject *uuid = (uuidobject *)self;
     if (uuid->cached_hash != -1) {
-        // UUIDs are very often used in dicts/sets, makes
-        // sense to cache the index value to make hashing
-        // as fast as possible.
+        // UUIDs are very often used in dicts/sets, so it makes
+        // sense to cache the computed hash (like we do for str)
         return uuid->cached_hash;
     }
 
+    // For compatibility with the Python version we do it via
+    // hashing the int representation.
     PyObject *int_value = get_int(uuid);
     Py_hash_t hash = PyObject_Hash(int_value);
     Py_DECREF(int_value);
@@ -1126,12 +1104,12 @@ static PyGetSetDef Uuid_getset[] = {
     {"time", (getter)Uuid_get_time, NULL, "Time field (60 bits for v1/v6, 48 bits for v7)", NULL},
     {"clock_seq", (getter)Uuid_get_clock_seq, NULL, "Clock sequence field (14 bits)", NULL},
     {"node", (getter)Uuid_get_node, NULL, "Node field (48 bits)", NULL},
-    {NULL}  /* Sentinel */
+    {NULL}
 };
 
 static PyMemberDef Uuid_members[] = {
     {"__weaklistoffset__", Py_T_PYSSIZET, offsetof(uuidobject, weakreflist), Py_READONLY},
-    {NULL}  /* Sentinel */
+    {NULL}
 };
 
 static PyType_Slot Uuid_slots[] = {
@@ -1273,31 +1251,31 @@ uuid_exec(PyObject *module)
         goto fail;
     }
 
-    // Import _UINT_128_MAX and _UINT_128_MIN from uuid module
     state->uint128_max = PyObject_GetAttrString(uuid_mod, "_UINT_128_MAX");
     if (state->uint128_max == NULL) {
         goto fail;
     }
 
-    // Import _from_fields function from uuid module
     state->from_fields_func = PyObject_GetAttrString(uuid_mod, "_from_fields");
     if (state->from_fields_func == NULL) {
         goto fail;
     }
 
-    // Import variant constants from uuid module
     state->reserved_ncs = PyObject_GetAttrString(uuid_mod, "RESERVED_NCS");
     if (state->reserved_ncs == NULL) {
         goto fail;
     }
+
     state->rfc_4122 = PyObject_GetAttrString(uuid_mod, "RFC_4122");
     if (state->rfc_4122 == NULL) {
         goto fail;
     }
+
     state->reserved_microsoft = PyObject_GetAttrString(uuid_mod, "RESERVED_MICROSOFT");
     if (state->reserved_microsoft == NULL) {
         goto fail;
     }
+
     state->reserved_future = PyObject_GetAttrString(uuid_mod, "RESERVED_FUTURE");
     if (state->reserved_future == NULL) {
         goto fail;
@@ -1323,7 +1301,7 @@ static PyMethodDef uuid_methods[] = {
 #if defined(MS_WINDOWS)
     {"UuidCreate", py_UuidCreate, METH_NOARGS, NULL},
 #endif
-    {NULL, NULL, 0, NULL}           /* sentinel */
+    {NULL, NULL, 0, NULL}
 };
 
 static PyModuleDef_Slot uuid_slots[] = {
