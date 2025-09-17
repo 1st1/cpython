@@ -35,6 +35,7 @@ def mock_get_command_stdout(data):
 
 class BaseTestUUID:
     uuid = None
+    is_c_uuid = False
 
     def test_nil_uuid(self):
         nil_uuid = self.uuid.NIL
@@ -874,11 +875,17 @@ class BaseTestUUID:
             equal((u.int >> 80) & 0xffff, 0x232a)
             equal((u.int >> 96) & 0xffff_ffff, 0x1ec9_414c)
 
-    def test_uuid7(self):
+    def test_uuid7_functional(self):
         equal = self.assertEqual
         u = self.uuid.uuid7()
         equal(u.variant, self.uuid.RFC_4122)
         equal(u.version, 7)
+
+    def test_uuid7_mock(self):
+        if self.is_c_uuid:
+            self.skipTest("C implementation of uuid7 cannot be tested with mocks")
+
+        equal = self.assertEqual
 
         # 1 Jan 2023 12:34:56.123_456_789
         timestamp_ns = 1672533296_123_456_789  # ns precision
@@ -937,7 +944,15 @@ class BaseTestUUID:
         versions = {u.version for u in uuids}
         self.assertSetEqual(versions, {7})
 
-    def test_uuid7_monotonicity(self):
+    def test_uuid7_monotonicity_functional(self):
+        equal = self.assertEqual
+        us = [self.uuid.uuid7() for _ in range(10_000)]
+        equal(us, sorted(us))
+
+    def test_uuid7_monotonicity_mock(self):
+        if self.is_c_uuid:
+            self.skipTest("C implementation of uuid7 cannot be tested with mocks")
+
         equal = self.assertEqual
 
         us = [self.uuid.uuid7() for _ in range(10_000)]
@@ -1000,7 +1015,10 @@ class BaseTestUUID:
 
             self.assertLess(u1, u2)
 
-    def test_uuid7_timestamp_backwards(self):
+    def test_uuid7_timestamp_backwards_mock(self):
+        if self.is_c_uuid:
+            self.skipTest("C implementation of uuid7 cannot be tested with mocks")
+
         equal = self.assertEqual
         # 1 Jan 2023 12:34:56.123_456_789
         timestamp_ns = 1672533296_123_456_789  # ns precision
@@ -1040,7 +1058,10 @@ class BaseTestUUID:
             equal((u.int >> 32) & 0x3fff_ffff, counter_lo + 1)
             equal(u.int & 0xffff_ffff, tail)
 
-    def test_uuid7_overflow_counter(self):
+    def test_uuid7_overflow_counter_mock(self):
+        if self.is_c_uuid:
+            self.skipTest("C implementation of uuid7 cannot be tested with mocks")
+
         equal = self.assertEqual
         # 1 Jan 2023 12:34:56.123_456_789
         timestamp_ns = 1672533296_123_456_789  # ns precision
@@ -1146,6 +1167,7 @@ class BaseTestUUID:
 
 class CommandLineTestCases:
     uuid = None  # to be defined in subclasses
+    is_c_uuid = False
 
     def do_test_standalone_uuid(self, version):
         stdout = io.StringIO()
@@ -1254,6 +1276,7 @@ class TestUUIDWithoutExtModule(CommandLineTestCases, BaseTestUUID, unittest.Test
 @unittest.skipUnless(c_uuid, 'requires the C _uuid module')
 class TestUUIDWithExtModule(CommandLineTestCases, BaseTestUUID, unittest.TestCase):
     uuid = c_uuid
+    is_c_uuid = True
 
     def check_has_stable_libuuid_extractable_node(self):
         if not self.uuid._has_stable_extractable_node:
@@ -1284,6 +1307,7 @@ class TestUUIDWithExtModule(CommandLineTestCases, BaseTestUUID, unittest.TestCas
 
 class BaseTestInternals:
     _uuid = py_uuid
+    is_c_uuid = False
 
     def check_parse_mac(self, aix):
         if not aix:
@@ -1477,6 +1501,7 @@ class TestInternalsWithoutExtModule(BaseTestInternals, unittest.TestCase):
 @unittest.skipUnless(c_uuid, 'requires the C _uuid module')
 class TestInternalsWithExtModule(BaseTestInternals, unittest.TestCase):
     uuid = c_uuid
+    is_c_uuid = True
 
     @unittest.skipUnless(os.name == 'posix', 'requires Posix')
     def test_unix_getnode(self):

@@ -1562,7 +1562,7 @@ static PyType_Slot Uuid_slots[] = {
 
 
 static PyType_Spec Uuid_spec = {
-    .name = "uuid.UUID",
+    .name = "_uuid.UUID",
     .basicsize = sizeof(uuidobject),
     .flags = (
         Py_TPFLAGS_DEFAULT

@@ -44,7 +44,7 @@ pickle(super, pickle_super)
 # Support for pickling new-style objects
 
 def _reconstructor(cls, base, state):
-    if cls.__module__ == 'uuid' and cls.__name__ == 'UUID' and base is object:
+    if cls.__module__ == '_uuid' and cls.__name__ == 'UUID' and base is object:
         # Compatibility with ancient pickled data -- prior to uuid rewritten in C
         # object.__new__ would work, but it can't work anymore.
         obj = cls.__new__(cls)
