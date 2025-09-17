@@ -6,7 +6,52 @@ preserve
 #  include "pycore_gc.h"          // PyGC_Head
 #  include "pycore_runtime.h"     // _Py_ID()
 #endif
+#include "pycore_critical_section.h"// Py_BEGIN_CRITICAL_SECTION()
 #include "pycore_modsupport.h"    // _PyArg_UnpackKeywords()
+
+PyDoc_STRVAR(_uuid_uuid4__doc__,
+"uuid4($module, /)\n"
+"--\n"
+"\n"
+"Generate a random UUID (version 4).");
+
+#define _UUID_UUID4_METHODDEF    \
+    {"uuid4", (PyCFunction)_uuid_uuid4, METH_NOARGS, _uuid_uuid4__doc__},
+
+static PyObject *
+_uuid_uuid4_impl(PyObject *module);
+
+static PyObject *
+_uuid_uuid4(PyObject *module, PyObject *Py_UNUSED(ignored))
+{
+    return _uuid_uuid4_impl(module);
+}
+
+PyDoc_STRVAR(_uuid_uuid7__doc__,
+"uuid7($module, /)\n"
+"--\n"
+"\n"
+"Generate a UUID from a Unix timestamp in milliseconds and random bits.\n"
+"\n"
+"UUIDv7 objects feature monotonicity within a millisecond.");
+
+#define _UUID_UUID7_METHODDEF    \
+    {"uuid7", (PyCFunction)_uuid_uuid7, METH_NOARGS, _uuid_uuid7__doc__},
+
+static PyObject *
+_uuid_uuid7_impl(PyObject *module);
+
+static PyObject *
+_uuid_uuid7(PyObject *module, PyObject *Py_UNUSED(ignored))
+{
+    PyObject *return_value = NULL;
+
+    Py_BEGIN_CRITICAL_SECTION(module);
+    return_value = _uuid_uuid7_impl(module);
+    Py_END_CRITICAL_SECTION();
+
+    return return_value;
+}
 
 PyDoc_STRVAR(_uuid_UUIDBase___init____doc__,
 "UUIDBase(hex=<unrepresentable>, bytes=None, bytes_le=None,\n"
@@ -137,4 +182,4 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=d22453feb1be1c5d input=a9049054013a1b77]*/
+/*[clinic end generated code: output=e10c4ba93779d1ea input=a9049054013a1b77]*/

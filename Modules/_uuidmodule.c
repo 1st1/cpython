@@ -11,6 +11,7 @@
 
 #include "pycore_long.h"          // _PyLong_FromByteArray, _PyLong_AsByteArray
 #include "pycore_pylifecycle.h"   // _PyOS_URandom()
+#include "pycore_time.h"          // PyTime_Time
 
 #if defined(HAVE_UUID_H)
   // AIX, FreeBSD, libuuid with pkgconf
@@ -152,6 +153,10 @@ typedef struct {
     PyObject *rfc_4122;
     PyObject *reserved_microsoft;
     PyObject *reserved_future;
+
+    // UUID v7 state for monotonicity
+    uint64_t last_timestamp_v7;
+    uint64_t last_counter_v7;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -190,33 +195,132 @@ static PyObject *uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16]);
 _uuid.uuid4
 
 Generate a random UUID (version 4).
-
-Returns a new UUID with 122 random bits (6 reserved bits for version/variant).
 [clinic start generated code]*/
 
 static PyObject *
-_uuid_uuid4(PyObject *module, PyObject *Py_UNUSED(ignored))
+_uuid_uuid4_impl(PyObject *module)
+/*[clinic end generated code: output=b835af30d9d6efc5 input=4999b436f9a70891]*/
 {
     uuid_state *state = get_uuid_state(module);
     uint8_t bytes[16];
 
-    // Generate 16 random bytes
     if (_PyOS_URandom(bytes, 16) < 0) {
-        PyErr_SetString(PyExc_OSError, "Failed to generate random bytes");
         return NULL;
     }
 
-    // Set version (4) and variant (RFC 4122) bits
-    // Version 4: xxxx xxxx xxxx 4xxx (bits 12-15 of time_hi_and_version)
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;  // Clear version bits and set to 0100 (version 4)
+    // Set version (4) and variant
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
 
-    // Variant RFC 4122: 10xx xxxx (bits 6-7 of clock_seq_hi_and_reserved)
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;  // Clear variant bits and set to 10
-
-    // Create and return the UUID object
     return uuid_from_bytes_array(state->UuidType, bytes);
 }
-/*[clinic end generated code: output=1f3c5864c6e13d22 input=e5f869e61f0db530]*/
+
+static inline int
+uuid7_get_counter_and_tail(uint64_t *counter, uint32_t *tail)
+{
+    uint8_t rand_bytes[10];
+    if (_PyOS_URandom(rand_bytes, 10) < 0) {
+        return -1;
+    }
+
+    uint16_t high = ((uint16_t)rand_bytes[0] << 8) | rand_bytes[1];
+    uint64_t low = ((uint64_t)rand_bytes[2] << 56) |
+                   ((uint64_t)rand_bytes[3] << 48) |
+                   ((uint64_t)rand_bytes[4] << 40) |
+                   ((uint64_t)rand_bytes[5] << 32) |
+                   ((uint64_t)rand_bytes[6] << 24) |
+                   ((uint64_t)rand_bytes[7] << 16) |
+                   ((uint64_t)rand_bytes[8] << 8) |
+                   ((uint64_t)rand_bytes[9]);
+
+    *counter = (((uint64_t)(high & 0x1FF) << 32) | (low >> 32)) & 0x1FFFFFFFFFF;
+    *tail = (uint32_t)low;
+    return 0;
+}
+
+
+// There's code that modifies the module state (emulating global variables
+// used in the pure Python implementation.) So we're slapping a critical
+// section here to make it easier to reason about the C port of this code.
+
+/*[clinic input]
+@critical_section
+_uuid.uuid7
+
+Generate a UUID from a Unix timestamp in milliseconds and random bits.
+
+UUIDv7 objects feature monotonicity within a millisecond.
+[clinic start generated code]*/
+
+static PyObject *
+_uuid_uuid7_impl(PyObject *module)
+/*[clinic end generated code: output=f301accc11162c91 input=88514d61dc785108]*/
+{
+    uuid_state *state = get_uuid_state(module);
+    uint8_t bytes[16];
+    uint64_t timestamp_ms, counter;
+    uint32_t tail;
+
+    PyTime_t pytime;
+    if (PyTime_Time(&pytime) < 0) {
+        return NULL;
+    }
+    timestamp_ms = (uint64_t)(pytime / 1000000);
+
+    if (state->last_timestamp_v7 == 0 || timestamp_ms > state->last_timestamp_v7) {
+        if (uuid7_get_counter_and_tail(&counter, &tail) < 0) {
+            return NULL;
+        }
+    } else {
+        if (timestamp_ms < state->last_timestamp_v7) {
+            timestamp_ms = state->last_timestamp_v7 + 1;
+        }
+        // advance the 42-bit counter
+        counter = state->last_counter_v7 + 1;
+        if (counter > 0x3FFFFFFFFFF) {
+            // advance the 48-bit timestamp
+            timestamp_ms += 1;
+            if (uuid7_get_counter_and_tail(&counter, &tail) < 0) {
+                return NULL;
+            }
+        } else {
+            // 32-bit random data
+            if (_PyOS_URandom((uint8_t *)&tail, 4) < 0) {
+                return NULL;
+            }
+        }
+    }
+
+    timestamp_ms &= 0xFFFFFFFFFFFF;
+    bytes[0] = (timestamp_ms >> 40);
+    bytes[1] = (timestamp_ms >> 32);
+    bytes[2] = (timestamp_ms >> 24);
+    bytes[3] = (timestamp_ms >> 16);
+    bytes[4] = (timestamp_ms >> 8);
+    bytes[5] = timestamp_ms;
+
+    uint16_t counter_hi = (counter >> 30) & 0x0FFF;
+    bytes[6] = 0x70 | ((counter_hi >> 8));  // Version 7 = 0111
+    bytes[7] = counter_hi;
+
+    uint16_t counter_mid = (counter >> 16) & 0x3FFF;
+    bytes[8] = 0x80 | (counter_mid >> 8);  // Variant = 10
+    bytes[9] = counter_mid;
+
+    uint16_t counter_lo = counter & 0xFFFF;
+    bytes[10] = counter_lo >> 8;
+    bytes[11] = counter_lo;
+
+    bytes[12] = tail >> 24;
+    bytes[13] = tail >> 16;
+    bytes[14] = tail >> 8;
+    bytes[15] = tail;
+
+    state->last_timestamp_v7 = timestamp_ms;
+    state->last_counter_v7 = counter;
+
+    return uuid_from_bytes_array(state->UuidType, bytes);
+}
 
 /*[clinic input]
 _uuid.UUIDBase.__init__
@@ -498,11 +602,9 @@ static int
 from_int(uuidobject *self, PyObject *int_value)
 {
     // Convert a 128-bit integer to UUID bytes (big-endian)
-    // Check that the integer is in valid range (0 to 2^128 - 1)
 
     uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
 
-    // Check if it's less than min (0)
     int cmp = PyLong_IsNegative(int_value);
     if (cmp < 0) {
         return -1;
@@ -524,7 +626,6 @@ from_int(uuidobject *self, PyObject *int_value)
         return -1;
     }
 
-    // Convert to bytes (big-endian)
     if (_PyLong_AsByteArray(
             (PyLongObject *)int_value,
             (unsigned char *)self->bytes,
@@ -1217,6 +1318,9 @@ uuid_exec(PyObject *module)
         goto fail;
     }
 
+    state->last_timestamp_v7 = 0;
+    state->last_counter_v7 = 0;
+
     Py_CLEAR(uuid_mod);
     return 0;
 
@@ -1226,10 +1330,8 @@ fail:
 }
 
 static PyMethodDef uuid_methods[] = {
-    {"uuid4", _uuid_uuid4, METH_NOARGS,
-     "uuid4() -> UUID\n\n"
-     "Generate a random UUID (version 4).\n\n"
-     "Returns a new UUID with 122 random bits (6 reserved bits for version/variant)."},
+    _UUID_UUID4_METHODDEF
+    _UUID_UUID7_METHODDEF
 #if defined(HAVE_UUID_UUID_H) || defined(HAVE_UUID_H)
     {"generate_time_safe", py_uuid_generate_time_safe, METH_NOARGS, NULL},
 #endif

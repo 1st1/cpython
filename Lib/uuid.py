@@ -937,12 +937,14 @@ def uuid8(a=None, b=None, c=None):
 
 
 _py_uuid4 = uuid4
+_py_uuid7 = uuid7
 try:
-    from _uuid import uuid4
+    from _uuid import uuid4, uuid7
 except ImportError:
     pass
 else:
     _c_uuid4 = uuid4
+    _c_uuid7 = uuid7
 
 def main():
     """Run the uuid command line interface."""

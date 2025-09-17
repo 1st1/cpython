@@ -5442,7 +5442,7 @@ unicode_decode_utf8(const char *s, Py_ssize_t size,
     // reallocation and copy.
     if (error_handler == _Py_ERROR_STRICT && !consumed && ch >= 0xc2) {
         // we only calculate the number of codepoints and don't determine the exact maxchr.
-        // This is because writing fast and portable SIMD code to find maxchr is difficult.
+        // This is because writing fast and portable  uuid code to find maxchr is difficult.
         // If reallocation occurs for a larger maxchar, knowing the exact number of codepoints
         // means that it is no longer necessary to allocate several times the required amount
         // of memory.
