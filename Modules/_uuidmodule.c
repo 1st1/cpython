@@ -135,6 +135,7 @@ typedef struct uuidobject {
 //   110x: Reserved for Microsoft compatibility
 //   111x: Reserved for future definition
 
+#define RANDOM_BUF_SIZE 160
 
 /* State of the _uuid module */
 typedef struct {
@@ -155,6 +156,9 @@ typedef struct {
     // UUID v7 state
     uint64_t last_timestamp_v7;
     uint64_t last_counter_v7;
+
+    uint8_t random_buf[RANDOM_BUF_SIZE];
+    uint64_t random_idx;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -195,6 +199,25 @@ _uuid.uuid4
 Generate a random UUID (version 4).
 [clinic start generated code]*/
 
+
+static int
+gen_random(uuid_state *state, uint8_t *bytes, Py_ssize_t size)
+{
+    if (state->random_idx + size <= RANDOM_BUF_SIZE) {
+        memcpy(bytes, state->random_buf + state->random_idx, size);
+        state->random_idx += size;
+    }
+    else {
+        if (_PyOS_URandom(state->random_buf, RANDOM_BUF_SIZE) < 0) {
+            return -1;
+        }
+        memcpy(bytes, state->random_buf, size);
+        state->random_idx = size;
+    }
+    return 0;
+}
+
+
 static PyObject *
 _uuid_uuid4_impl(PyObject *module)
 /*[clinic end generated code: output=b835af30d9d6efc5 input=4999b436f9a70891]*/
@@ -202,7 +225,7 @@ _uuid_uuid4_impl(PyObject *module)
     uuid_state *state = get_uuid_state(module);
     uint8_t bytes[16];
 
-    if (_PyOS_URandom(bytes, 16) < 0) {
+    if (gen_random(state, bytes, 16) < 0) {
         return NULL;
     }
 
@@ -214,10 +237,10 @@ _uuid_uuid4_impl(PyObject *module)
 }
 
 static inline int
-uuid7_get_counter_and_tail(uint64_t *counter, uint32_t *tail)
+uuid7_get_counter_and_tail(uuid_state *state, uint64_t *counter, uint32_t *tail)
 {
     uint8_t rand_bytes[10];
-    if (_PyOS_URandom(rand_bytes, 10) < 0) {
+    if (gen_random(state, rand_bytes, 10) < 0) {
         return -1;
     }
 
@@ -265,7 +288,7 @@ _uuid_uuid7_impl(PyObject *module)
     timestamp_ms = (uint64_t)(pytime / 1000000);
 
     if (state->last_timestamp_v7 == 0 || timestamp_ms > state->last_timestamp_v7) {
-        if (uuid7_get_counter_and_tail(&counter, &tail) < 0) {
+        if (uuid7_get_counter_and_tail(state, &counter, &tail) < 0) {
             return NULL;
         }
     } else {
@@ -277,12 +300,12 @@ _uuid_uuid7_impl(PyObject *module)
         if (counter > 0x3FFFFFFFFFF) {
             // advance the 48-bit timestamp
             timestamp_ms += 1;
-            if (uuid7_get_counter_and_tail(&counter, &tail) < 0) {
+            if (uuid7_get_counter_and_tail(state, &counter, &tail) < 0) {
                 return NULL;
             }
         } else {
             // 32-bit random data
-            if (_PyOS_URandom((uint8_t *)&tail, 4) < 0) {
+            if (gen_random(state, (uint8_t *)&tail, 4) < 0) {
                 return NULL;
             }
         }
@@ -1407,6 +1430,8 @@ uuid_exec(PyObject *module)
 
     state->last_timestamp_v7 = 0;
     state->last_counter_v7 = 0;
+
+    state->random_idx = RANDOM_BUF_SIZE;
 
     Py_CLEAR(uuid_mod);
     return 0;
