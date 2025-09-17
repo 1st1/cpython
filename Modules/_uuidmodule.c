@@ -943,7 +943,7 @@ Uuid_get_time(uuidobject *self, void *closure)
 
     if (version == 6) {
         // UUID v6: time_hi (32) | time_mid (16) | ver (4) | time_lo (12) | ... (64)
-        uint32_t time_hi = get_time_low(self);  // In v6, time_low position holds time_hi
+        uint32_t time_hi = get_time_low(self);
         uint16_t time_mid = get_time_mid(self);
         uint16_t time_lo = ((uint16_t)(self->bytes[6] & 0x0f) << 8) |
                           ((uint16_t)self->bytes[7]);
@@ -998,6 +998,37 @@ static PyObject *
 Uuid_get_bytes(uuidobject *self, void *closure)
 {
     return PyBytes_FromStringAndSize((const char *)self->bytes, 16);
+}
+
+static PyObject *
+Uuid_get_bytes_le(uuidobject *self, void *closure)
+{
+    // UUID fields in little-endian order need to be byte-swapped:
+    // - time_low (4 bytes) - reversed
+    // - time_mid (2 bytes) - reversed
+    // - time_hi_version (2 bytes) - reversed
+    // - clock_seq and node (8 bytes) - unchanged
+
+    unsigned char bytes_le[16];
+
+    // Reverse time_low (bytes 0-3)
+    bytes_le[0] = self->bytes[3];
+    bytes_le[1] = self->bytes[2];
+    bytes_le[2] = self->bytes[1];
+    bytes_le[3] = self->bytes[0];
+
+    // Reverse time_mid (bytes 4-5)
+    bytes_le[4] = self->bytes[5];
+    bytes_le[5] = self->bytes[4];
+
+    // Reverse time_hi_version (bytes 6-7)
+    bytes_le[6] = self->bytes[7];
+    bytes_le[7] = self->bytes[6];
+
+    // Copy clock_seq and node as-is (bytes 8-15)
+    memcpy(bytes_le + 8, self->bytes + 8, 8);
+
+    return PyBytes_FromStringAndSize((const char *)bytes_le, 16);
 }
 
 static PyObject *
@@ -1182,7 +1213,6 @@ Uuid_hash(PyObject *self)
 static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
     {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
-    {"bytes", (getter)Uuid_get_bytes, NULL, "UUID as a 16-byte string", NULL},
     {"fields", (getter)Uuid_get_fields, NULL, "UUID as a 6-tuple", NULL},
     {"hex", (getter)Uuid_get_hex, NULL, "UUID as a 32-character hex string", NULL},
     {"urn", (getter)Uuid_get_urn, NULL, "UUID as a URN", NULL},
@@ -1190,12 +1220,21 @@ static PyGetSetDef Uuid_getset[] = {
     {"version", (getter)Uuid_get_version, NULL, "UUID version", NULL},
     {"time_low", (getter)Uuid_get_time_low, NULL, "Time low field (32 bits)", NULL},
     {"time_mid", (getter)Uuid_get_time_mid, NULL, "Time mid field (16 bits)", NULL},
-    {"time_hi_version", (getter)Uuid_get_time_hi_version, NULL, "Time high and version field (16 bits)", NULL},
-    {"clock_seq_hi_variant", (getter)Uuid_get_clock_seq_hi_variant, NULL, "Clock sequence high and variant field (8 bits)", NULL},
-    {"clock_seq_low", (getter)Uuid_get_clock_seq_low, NULL, "Clock sequence low field (8 bits)", NULL},
-    {"time", (getter)Uuid_get_time, NULL, "Time field (60 bits for v1/v6, 48 bits for v7)", NULL},
-    {"clock_seq", (getter)Uuid_get_clock_seq, NULL, "Clock sequence field (14 bits)", NULL},
-    {"node", (getter)Uuid_get_node, NULL, "Node field (48 bits)", NULL},
+    {"bytes", (getter)Uuid_get_bytes, NULL, "UUID as a 16-byte string", NULL},
+    {"bytes_le", (getter)Uuid_get_bytes_le, NULL,
+        "UUID as a 16-byte string in little-endian byte order", NULL},
+    {"time_hi_version", (getter)Uuid_get_time_hi_version, NULL,
+        "Time high and version field (16 bits)", NULL},
+    {"clock_seq_hi_variant", (getter)Uuid_get_clock_seq_hi_variant, NULL,
+        "Clock sequence high and variant field (8 bits)", NULL},
+    {"clock_seq_low", (getter)Uuid_get_clock_seq_low, NULL,
+        "Clock sequence low field (8 bits)", NULL},
+    {"time", (getter)Uuid_get_time, NULL,
+        "Time field (60 bits for v1/v6, 48 bits for v7)", NULL},
+    {"clock_seq", (getter)Uuid_get_clock_seq, NULL,
+        "Clock sequence field (14 bits)", NULL},
+    {"node", (getter)Uuid_get_node, NULL,
+        "Node field (48 bits)", NULL},
     {NULL}
 };
 
