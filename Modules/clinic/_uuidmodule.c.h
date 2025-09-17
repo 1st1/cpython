@@ -210,4 +210,46 @@ _uuid_UUID__from_int(PyObject *type, PyObject *value)
 
     return return_value;
 }
-/*[clinic end generated code: output=eb6c0517adff9763 input=a9049054013a1b77]*/
+
+PyDoc_STRVAR(_uuid_UUID___getstate____doc__,
+"__getstate__($self, /)\n"
+"--\n"
+"\n"
+"Return the UUID\'s state for pickling.");
+
+#define _UUID_UUID___GETSTATE___METHODDEF    \
+    {"__getstate__", (PyCFunction)_uuid_UUID___getstate__, METH_NOARGS, _uuid_UUID___getstate____doc__},
+
+static PyObject *
+_uuid_UUID___getstate___impl(uuidobject *self);
+
+static PyObject *
+_uuid_UUID___getstate__(PyObject *self, PyObject *Py_UNUSED(ignored))
+{
+    return _uuid_UUID___getstate___impl((uuidobject *)self);
+}
+
+PyDoc_STRVAR(_uuid_UUID___setstate____doc__,
+"__setstate__($self, state, /)\n"
+"--\n"
+"\n"
+"Restore the UUID\'s state from pickling.\n"
+"\n"
+"Expects a dictionary with \'int\' and optionally \'is_safe\' keys.");
+
+#define _UUID_UUID___SETSTATE___METHODDEF    \
+    {"__setstate__", (PyCFunction)_uuid_UUID___setstate__, METH_O, _uuid_UUID___setstate____doc__},
+
+static PyObject *
+_uuid_UUID___setstate___impl(uuidobject *self, PyObject *state);
+
+static PyObject *
+_uuid_UUID___setstate__(PyObject *self, PyObject *state)
+{
+    PyObject *return_value = NULL;
+
+    return_value = _uuid_UUID___setstate___impl((uuidobject *)self, state);
+
+    return return_value;
+}
+/*[clinic end generated code: output=ec50cafa0e028d2b input=a9049054013a1b77]*/

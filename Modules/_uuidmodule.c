@@ -1401,8 +1401,98 @@ static PyGetSetDef Uuid_getset[] = {
     {NULL}
 };
 
+/*[clinic input]
+_uuid.UUID.__getstate__
+
+Return the UUID's state for pickling.
+[clinic start generated code]*/
+
+static PyObject *
+_uuid_UUID___getstate___impl(uuidobject *self)
+/*[clinic end generated code: output=f9278a4d28ccac91 input=4b471ae24b705e8e]*/
+{
+    PyObject *dict = PyDict_New();
+    if (dict == NULL) {
+        return NULL;
+    }
+
+    // Always add 'int' key
+    PyObject *int_value = get_int(self);
+    if (int_value == NULL) {
+        Py_DECREF(dict);
+        return NULL;
+    }
+    if (PyDict_SetItemString(dict, "int", int_value) < 0) {
+        Py_DECREF(int_value);
+        Py_DECREF(dict);
+        return NULL;
+    }
+    Py_DECREF(int_value);
+
+    if (PyDict_SetItemString(dict, "is_safe", self->is_safe) < 0) {
+        Py_DECREF(dict);
+        return NULL;
+    }
+
+    return dict;
+}
+
+/*[clinic input]
+_uuid.UUID.__setstate__
+
+    state: object
+    /
+
+Restore the UUID's state from pickling.
+
+Expects a dictionary with 'int' and optionally 'is_safe' keys.
+[clinic start generated code]*/
+
+static PyObject *
+_uuid_UUID___setstate___impl(uuidobject *self, PyObject *state)
+/*[clinic end generated code: output=cdf6bd4a2a680b3f input=b1ec0744788a73a0]*/
+{
+    uuid_state *module_state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    if (!PyDict_Check(state)) {
+        PyErr_SetString(PyExc_TypeError, "state must be a dictionary");
+        return NULL;
+    }
+
+    // Get and set the 'int' value
+    PyObject *int_value = PyDict_GetItemString(state, "int");
+    if (int_value == NULL) {
+        PyErr_SetString(PyExc_ValueError, "state must have 'int' key");
+        return NULL;
+    }
+
+    if (from_int(self, int_value, 1) < 0) {
+        return NULL;
+    }
+
+    // Get and set 'is_safe' if present
+    PyObject *is_safe = PyDict_GetItemString(state, "is_safe");
+    if (is_safe != NULL) {
+        // is_safe is the integer value, we need to call SafeUUID(value)
+        PyObject *safe_uuid_member = PyObject_CallOneArg(module_state->safe_uuid, is_safe);
+        if (safe_uuid_member == NULL) {
+            return NULL;
+        }
+        Py_XDECREF(self->is_safe);
+        self->is_safe = safe_uuid_member;
+    } else {
+        // No is_safe in state, set to SafeUUID.unknown
+        Py_XDECREF(self->is_safe);
+        self->is_safe = Py_NewRef(module_state->safe_uuid_unknown);
+    }
+
+    Py_RETURN_NONE;
+}
+
 static PyMethodDef Uuid_methods[] = {
     _UUID_UUID__FROM_INT_METHODDEF
+    _UUID_UUID___GETSTATE___METHODDEF
+    _UUID_UUID___SETSTATE___METHODDEF
     {NULL, NULL}
 };
 
@@ -1431,7 +1521,7 @@ static PyType_Slot Uuid_slots[] = {
 
 
 static PyType_Spec Uuid_spec = {
-    .name = "_uuid.UUID",
+    .name = "uuid.UUID",
     .basicsize = sizeof(uuidobject),
     .flags = (
         Py_TPFLAGS_DEFAULT
