@@ -53,22 +53,22 @@ _uuid_uuid7(PyObject *module, PyObject *Py_UNUSED(ignored))
     return return_value;
 }
 
-PyDoc_STRVAR(_uuid_UUIDBase___init____doc__,
-"UUIDBase(hex=<unrepresentable>, bytes=None, bytes_le=None,\n"
-"         fields=<unrepresentable>, int=<unrepresentable>,\n"
-"         version=<unrepresentable>, *, is_safe=<unrepresentable>)\n"
+PyDoc_STRVAR(_uuid_UUID___init____doc__,
+"UUID(hex=<unrepresentable>, bytes=None, bytes_le=None,\n"
+"     fields=<unrepresentable>, int=<unrepresentable>,\n"
+"     version=<unrepresentable>, *, is_safe=<unrepresentable>)\n"
 "--\n"
 "\n"
-"UUIDBase is a fast base implementation type for uuid.UUID.");
+"UUID is a fast base implementation type for uuid.UUID.");
 
 static int
-_uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
-                             Py_buffer *bytes, Py_buffer *bytes_le,
-                             PyObject *fields, PyObject *int_value,
-                             PyObject *version, PyObject *is_safe);
+_uuid_UUID___init___impl(uuidobject *self, PyObject *hex, Py_buffer *bytes,
+                         Py_buffer *bytes_le, PyObject *fields,
+                         PyObject *int_value, PyObject *version,
+                         PyObject *is_safe);
 
 static int
-_uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
+_uuid_UUID___init__(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     int return_value = -1;
     #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
@@ -94,7 +94,7 @@ _uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
     static const char * const _keywords[] = {"hex", "bytes", "bytes_le", "fields", "int", "version", "is_safe", NULL};
     static _PyArg_Parser _parser = {
         .keywords = _keywords,
-        .fname = "UUIDBase",
+        .fname = "UUID",
         .kwtuple = KWTUPLE,
     };
     #undef KWTUPLE
@@ -120,7 +120,7 @@ _uuid_UUIDBase___init__(PyObject *self, PyObject *args, PyObject *kwargs)
     }
     if (fastargs[0]) {
         if (!PyUnicode_Check(fastargs[0])) {
-            _PyArg_BadArgument("UUIDBase", "argument 'hex'", "str", fastargs[0]);
+            _PyArg_BadArgument("UUID", "argument 'hex'", "str", fastargs[0]);
             goto exit;
         }
         hex = fastargs[0];
@@ -168,7 +168,7 @@ skip_optional_pos:
     }
     is_safe = fastargs[6];
 skip_optional_kwonly:
-    return_value = _uuid_UUIDBase___init___impl((uuidobject *)self, hex, &bytes, &bytes_le, fields, int_value, version, is_safe);
+    return_value = _uuid_UUID___init___impl((uuidobject *)self, hex, &bytes, &bytes_le, fields, int_value, version, is_safe);
 
 exit:
     /* Cleanup for bytes */
@@ -182,4 +182,4 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=e10c4ba93779d1ea input=a9049054013a1b77]*/
+/*[clinic end generated code: output=ff7c440d51711345 input=a9049054013a1b77]*/

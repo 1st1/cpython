@@ -160,9 +160,9 @@ typedef struct {
 #include "clinic/_uuidmodule.c.h"
 
 /*[clinic input]
-class _uuid.UUIDBase "uuidobject *" "&UuidType"
+class _uuid.UUID "uuidobject *" "&UuidType"
 [clinic start generated code]*/
-/*[clinic end generated code: output=da39a3ee5e6b4b0d input=f8e4c40a12276445]*/
+/*[clinic end generated code: output=da39a3ee5e6b4b0d input=84ae6e2089cffd3f]*/
 
 // Forward declarations
 static int from_hex(uuidobject *self, PyObject *hex);
@@ -320,7 +320,7 @@ _uuid_uuid7_impl(PyObject *module)
 }
 
 /*[clinic input]
-_uuid.UUIDBase.__init__
+_uuid.UUID.__init__
 
     hex: 'U' = NULL
     bytes: 'y*' = None
@@ -331,15 +331,15 @@ _uuid.UUIDBase.__init__
     *
     is_safe: object = NULL
 
-UUIDBase is a fast base implementation type for uuid.UUID.
+UUID is a fast base implementation type for uuid.UUID.
 [clinic start generated code]*/
 
 static int
-_uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
-                             Py_buffer *bytes, Py_buffer *bytes_le,
-                             PyObject *fields, PyObject *int_value,
-                             PyObject *version, PyObject *is_safe)
-/*[clinic end generated code: output=0620020f183160d6 input=8a7375a0f9275225]*/
+_uuid_UUID___init___impl(uuidobject *self, PyObject *hex, Py_buffer *bytes,
+                         Py_buffer *bytes_le, PyObject *fields,
+                         PyObject *int_value, PyObject *version,
+                         PyObject *is_safe)
+/*[clinic end generated code: output=93a6881c8f79bf9b input=b9c79672fbd76a99]*/
 
 {
     uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
@@ -1210,8 +1210,8 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_getattro, PyObject_GenericGetAttr},
     {Py_tp_getset, Uuid_getset},
     {Py_tp_members, Uuid_members},
-    {Py_tp_init, _uuid_UUIDBase___init__},
-    {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
+    {Py_tp_init, _uuid_UUID___init__},
+    {Py_tp_doc, (void *)_uuid_UUID___init____doc__},
     {Py_tp_str, Uuid_str},
     {Py_tp_repr, Uuid_repr},
     {Py_tp_hash, Uuid_hash},
@@ -1222,7 +1222,7 @@ static PyType_Slot Uuid_slots[] = {
 
 
 static PyType_Spec Uuid_spec = {
-    .name = "_uuid.UUIDBase",
+    .name = "_uuid.UUID",
     .basicsize = sizeof(uuidobject),
     .flags = (
         Py_TPFLAGS_DEFAULT
