@@ -966,13 +966,19 @@ Uuid_get_variant(uuidobject *self, void *closure)
     return Py_NewRef(state->reserved_future);
 }
 
+static int
+is_rfc_4122(uuidobject *self)
+{
+    return (self->bytes[8] & 0xc0) == 0x80;
+}
+
 static long
 get_version(uuidobject *self)
 {
     // RFC_4122 is when bit 7 is set (0x80) and bit 6 is not set (0x40)
     // 0xc0 = 0b11000000
     // 0x80 = 0b10000000
-    if ((self->bytes[8] & 0xc0) != 0x80) {
+    if (!is_rfc_4122(self)) {
         return 0;
     }
     return (self->bytes[6] >> 4) & 0xf;
@@ -981,11 +987,10 @@ get_version(uuidobject *self)
 static PyObject *
 Uuid_get_version(uuidobject *self, void *closure)
 {
-    long ver = get_version(self);
-    if (!ver) {
+    if (!is_rfc_4122(self)) {
         Py_RETURN_NONE;
     }
-    return PyLong_FromLong(ver);
+    return PyLong_FromLong(get_version(self));
 }
 
 static inline uint32_t
