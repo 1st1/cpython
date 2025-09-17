@@ -256,10 +256,7 @@ _uuid_UUID___setstate__(PyObject *self, PyObject *state)
 PyDoc_STRVAR(_uuid_UUID___reduce_ex____doc__,
 "__reduce_ex__($self, protocol, /)\n"
 "--\n"
-"\n"
-"Helper for pickle protocols 0 and 1.\n"
-"\n"
-"Returns a tuple suitable for pickling the UUID object.");
+"\n");
 
 #define _UUID_UUID___REDUCE_EX___METHODDEF    \
     {"__reduce_ex__", (PyCFunction)_uuid_UUID___reduce_ex__, METH_O, _uuid_UUID___reduce_ex____doc__},
@@ -282,4 +279,4 @@ _uuid_UUID___reduce_ex__(PyObject *self, PyObject *arg)
 exit:
     return return_value;
 }
-/*[clinic end generated code: output=54212b2cedee0e73 input=a9049054013a1b77]*/
+/*[clinic end generated code: output=cde21bfd1d335b0e input=a9049054013a1b77]*/

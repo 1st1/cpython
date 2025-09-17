@@ -1497,17 +1497,17 @@ _uuid.UUID.__reduce_ex__
     protocol: int
     /
 
-Helper for pickle protocols 0 and 1.
-
-Returns a tuple suitable for pickling the UUID object.
 [clinic start generated code]*/
 
 static PyObject *
 _uuid_UUID___reduce_ex___impl(uuidobject *self, int protocol)
-/*[clinic end generated code: output=1ea9c5b366233178 input=b0b5be25835550f3]*/
+/*[clinic end generated code: output=1ea9c5b366233178 input=a978ac845111d71a]*/
 {
     // For all protocols, return (uuid._unpickle, (state,))
-    // where _unpickle will create a new UUID and set its state
+    // where _unpickle will create a new UUID and set its state.
+
+    // Primarily we define __reduce_ex__ to make the C implementation
+    // compatible with protocols 0 & 1.
 
     uuid_state *mod_state = get_uuid_state_by_cls(Py_TYPE(self));
 
@@ -1516,14 +1516,12 @@ _uuid_UUID___reduce_ex___impl(uuidobject *self, int protocol)
         return NULL;
     }
 
-    // Create args tuple with just the state
     PyObject *args = PyTuple_Pack(1, state);
     if (args == NULL) {
         Py_DECREF(state);
         return NULL;
     }
 
-    // Return (unpickle, args)
     PyObject *result = PyTuple_Pack(2, mod_state->unpickle, args);
     Py_DECREF(args);
     Py_DECREF(state);

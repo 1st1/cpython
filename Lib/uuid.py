@@ -295,6 +295,11 @@ class UUID:
         object.__setattr__(self, 'is_safe', SafeUUID.unknown)
         return self
 
+    def __reduce_ex__(self, protocol):
+        # Primarily we define __reduce_ex__ to make the C implementation
+        # compatible with protocols 0 & 1.
+        return _unpickle, (self.__getstate__(),)
+
     def __getstate__(self):
         d = {'int': self.int}
         if self.is_safe != SafeUUID.unknown:
@@ -1027,13 +1032,10 @@ NIL = UUID('00000000-0000-0000-0000-000000000000')
 MAX = UUID('ffffffff-ffff-ffff-ffff-ffffffffffff')
 
 def _unpickle(state):
-    """Internal function to unpickle a UUID from a state dictionary.
-
-    This is used by the C extension module for pickle compatibility.
-    """
-    # Create a new UUID instance
+    """Internal function to unpickle a UUID from a state dictionary."""
+    # This is also used by the C extension module for pickle compatibility
+    # with protocols 0 & 1.
     obj = UUID.__new__(UUID)
-    # Set its state
     obj.__setstate__(state)
     return obj
 
