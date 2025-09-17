@@ -706,9 +706,17 @@ Uuid_repr(PyObject *self)
         return NULL;
     }
 
-    // Format as "UUID('...')"
-    PyObject *repr = PyUnicode_FromFormat("UUID('%U')", str_obj);
+    // Get the class name (can't use tp_name -- we don't need full name)
+    PyObject *cls_name = PyObject_GetAttrString((PyObject *)Py_TYPE(self), "__name__");
+    if (cls_name == NULL) {
+        Py_DECREF(str_obj);
+        return NULL;
+    }
+
+    // Format as "ClassName('...')" matching Python's '%s(%r)' % (self.__class__.__name__, str(self))
+    PyObject *repr = PyUnicode_FromFormat("%U('%U')", cls_name, str_obj);
     Py_DECREF(str_obj);
+    Py_DECREF(cls_name);
     return repr;
 }
 
@@ -750,7 +758,6 @@ Uuid_hash(PyObject *self)
     return hash;
 
 }
-
 
 static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
