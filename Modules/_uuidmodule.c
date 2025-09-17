@@ -1587,6 +1587,7 @@ module_traverse(PyObject *mod, visitproc visit, void *arg)
     Py_VISIT(state->rfc_4122);
     Py_VISIT(state->reserved_microsoft);
     Py_VISIT(state->reserved_future);
+    Py_VISIT(state->unpickle);
     return 0;
 }
 
@@ -1605,6 +1606,7 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->rfc_4122);
     Py_CLEAR(state->reserved_microsoft);
     Py_CLEAR(state->reserved_future);
+    Py_CLEAR(state->unpickle);
 
     if (state->freelist != NULL) {
         while (state->freelist != NULL) {
