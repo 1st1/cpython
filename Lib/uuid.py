@@ -1026,5 +1026,19 @@ NAMESPACE_X500 = UUID('6ba7b814-9dad-11d1-80b4-00c04fd430c8')
 NIL = UUID('00000000-0000-0000-0000-000000000000')
 MAX = UUID('ffffffff-ffff-ffff-ffff-ffffffffffff')
 
+# Patch copyreg._reconstructor to handle UUID unpickling from old Python versions
+# Old pickles use object.__new__ which doesn't work with our C extension type
+import copyreg
+_original_reconstructor = copyreg._reconstructor
+
+def _patched_reconstructor(cls, base, state):
+    if cls is UUID and base is object:
+        # For UUID, create an instance using cls.__new__() instead of object.__new__()
+        obj = cls.__new__(cls)
+        return obj
+    return _original_reconstructor(cls, base, state)
+
+copyreg._reconstructor = _patched_reconstructor
+
 if __name__ == "__main__":
     main()
