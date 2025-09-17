@@ -650,25 +650,81 @@ Uuid_get_version(uuidobject *self, void *closure)
     return PyLong_FromLong(ver);
 }
 
-static PyGetSetDef Uuid_getset[] = {
-    {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
-    {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
-    {"hex", (getter)Uuid_get_hex, NULL, "UUID as a 32-character hex string", NULL},
-    {"variant", (getter)Uuid_get_variant, NULL, "UUID variant", NULL},
-    {"version", (getter)Uuid_get_version, NULL, "UUID version", NULL},
-    {NULL}  /* Sentinel */
-};
-
-
-static PyMemberDef Uuid_members[] = {
-    {"__weaklistoffset__", Py_T_PYSSIZET, offsetof(uuidobject, weakreflist), Py_READONLY},
-    {NULL}  /* Sentinel */
-};
-
 static PyObject *
 Uuid_nb_int(PyObject *self)
 {
     return get_int((uuidobject *)self);
+}
+
+static PyObject *
+Uuid_str(PyObject *self)
+{
+    uuidobject *uuid = (uuidobject *)self;
+
+    // UUID string format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (36 chars)
+    char str[36];
+
+    // Convert bytes to hex with hyphens at the right positions
+    // Bytes 0-3 (8 hex chars)
+    for (int i = 0; i < 4; i++) {
+        byte_to_hex(uuid->bytes[i], &str[i * 2]);
+    }
+    str[8] = '-';
+
+    // Bytes 4-5 (4 hex chars)
+    for (int i = 4; i < 6; i++) {
+        byte_to_hex(uuid->bytes[i], &str[9 + (i - 4) * 2]);
+    }
+    str[13] = '-';
+
+    // Bytes 6-7 (4 hex chars)
+    for (int i = 6; i < 8; i++) {
+        byte_to_hex(uuid->bytes[i], &str[14 + (i - 6) * 2]);
+    }
+    str[18] = '-';
+
+    // Bytes 8-9 (4 hex chars)
+    for (int i = 8; i < 10; i++) {
+        byte_to_hex(uuid->bytes[i], &str[19 + (i - 8) * 2]);
+    }
+    str[23] = '-';
+
+    // Bytes 10-15 (12 hex chars)
+    for (int i = 10; i < 16; i++) {
+        byte_to_hex(uuid->bytes[i], &str[24 + (i - 10) * 2]);
+    }
+
+    return PyUnicode_FromStringAndSize(str, 36);
+}
+
+static PyObject *
+Uuid_repr(PyObject *self)
+{
+    // Get the string representation
+    PyObject *str_obj = Uuid_str(self);
+    if (str_obj == NULL) {
+        return NULL;
+    }
+
+    // Format as "UUID('...')"
+    PyObject *repr = PyUnicode_FromFormat("UUID('%U')", str_obj);
+    Py_DECREF(str_obj);
+    return repr;
+}
+
+static PyObject *
+Uuid_get_urn(uuidobject *self, void *closure)
+{
+    // Get the string representation
+    PyObject *str_obj = Uuid_str((PyObject *)self);
+    if (str_obj == NULL) {
+        return NULL;
+    }
+
+    // Prepend "urn:uuid:"
+    PyObject *urn = PyUnicode_FromFormat("urn:uuid:%U", str_obj);
+    Py_DECREF(str_obj);
+    return urn;
 }
 
 static Py_hash_t
@@ -695,6 +751,22 @@ Uuid_hash(PyObject *self)
 
 }
 
+
+static PyGetSetDef Uuid_getset[] = {
+    {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
+    {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
+    {"hex", (getter)Uuid_get_hex, NULL, "UUID as a 32-character hex string", NULL},
+    {"urn", (getter)Uuid_get_urn, NULL, "UUID as a URN", NULL},
+    {"variant", (getter)Uuid_get_variant, NULL, "UUID variant", NULL},
+    {"version", (getter)Uuid_get_version, NULL, "UUID version", NULL},
+    {NULL}  /* Sentinel */
+};
+
+static PyMemberDef Uuid_members[] = {
+    {"__weaklistoffset__", Py_T_PYSSIZET, offsetof(uuidobject, weakreflist), Py_READONLY},
+    {NULL}  /* Sentinel */
+};
+
 static PyType_Slot Uuid_slots[] = {
     {Py_tp_new, Uuid_new},
     {Py_tp_dealloc, Uuid_dealloc},
@@ -703,6 +775,8 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_members, Uuid_members},
     {Py_tp_init, _uuid_UUIDBase___init__},
     {Py_tp_doc, (void *)_uuid_UUIDBase___init____doc__},
+    {Py_tp_str, Uuid_str},
+    {Py_tp_repr, Uuid_repr},
     {Py_tp_hash, Uuid_hash},
     {Py_nb_int, Uuid_nb_int},
     {0, NULL},
