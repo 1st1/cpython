@@ -650,47 +650,81 @@ Uuid_get_version(uuidobject *self, void *closure)
     return PyLong_FromLong(ver);
 }
 
+static inline uint32_t
+get_time_low(uuidobject *self)
+{
+    return ((uint32_t)self->bytes[0] << 24) |
+           ((uint32_t)self->bytes[1] << 16) |
+           ((uint32_t)self->bytes[2] << 8) |
+           ((uint32_t)self->bytes[3]);
+}
+
+static inline uint16_t
+get_time_mid(uuidobject *self)
+{
+    return ((uint16_t)self->bytes[4] << 8) |
+           ((uint16_t)self->bytes[5]);
+}
+
+static inline uint16_t
+get_time_hi_version(uuidobject *self)
+{
+    return ((uint16_t)self->bytes[6] << 8) |
+           ((uint16_t)self->bytes[7]);
+}
+
+static inline uint8_t
+get_clock_seq_hi_variant(uuidobject *self)
+{
+    return self->bytes[8];
+}
+
+static inline uint8_t
+get_clock_seq_low(uuidobject *self)
+{
+    return self->bytes[9];
+}
+
+static inline uint64_t
+get_node(uuidobject *self)
+{
+    return ((uint64_t)self->bytes[10] << 40) |
+           ((uint64_t)self->bytes[11] << 32) |
+           ((uint64_t)self->bytes[12] << 24) |
+           ((uint64_t)self->bytes[13] << 16) |
+           ((uint64_t)self->bytes[14] << 8) |
+           ((uint64_t)self->bytes[15]);
+}
+
+// Property getters that use the inline functions
 static PyObject *
 Uuid_get_time_low(uuidobject *self, void *closure)
 {
-    // Bytes 0-3 (32 bits) in big-endian
-    uint32_t time_low = ((uint32_t)self->bytes[0] << 24) |
-                        ((uint32_t)self->bytes[1] << 16) |
-                        ((uint32_t)self->bytes[2] << 8) |
-                        ((uint32_t)self->bytes[3]);
-    return PyLong_FromUnsignedLong(time_low);
+    return PyLong_FromUnsignedLong(get_time_low(self));
 }
 
 static PyObject *
 Uuid_get_time_mid(uuidobject *self, void *closure)
 {
-    // Bytes 4-5 (16 bits) in big-endian
-    uint16_t time_mid = ((uint16_t)self->bytes[4] << 8) |
-                        ((uint16_t)self->bytes[5]);
-    return PyLong_FromUnsignedLong(time_mid);
+    return PyLong_FromUnsignedLong(get_time_mid(self));
 }
 
 static PyObject *
 Uuid_get_time_hi_version(uuidobject *self, void *closure)
 {
-    // Bytes 6-7 (16 bits) in big-endian
-    uint16_t time_hi_version = ((uint16_t)self->bytes[6] << 8) |
-                                ((uint16_t)self->bytes[7]);
-    return PyLong_FromUnsignedLong(time_hi_version);
+    return PyLong_FromUnsignedLong(get_time_hi_version(self));
 }
 
 static PyObject *
 Uuid_get_clock_seq_hi_variant(uuidobject *self, void *closure)
 {
-    // Byte 8 (8 bits)
-    return PyLong_FromUnsignedLong(self->bytes[8]);
+    return PyLong_FromUnsignedLong(get_clock_seq_hi_variant(self));
 }
 
 static PyObject *
 Uuid_get_clock_seq_low(uuidobject *self, void *closure)
 {
-    // Byte 9 (8 bits)
-    return PyLong_FromUnsignedLong(self->bytes[9]);
+    return PyLong_FromUnsignedLong(get_clock_seq_low(self));
 }
 
 static PyObject *
@@ -700,12 +734,8 @@ Uuid_get_time(uuidobject *self, void *closure)
 
     if (version == 6) {
         // UUID v6: time_hi (32) | time_mid (16) | ver (4) | time_lo (12) | ... (64)
-        uint32_t time_hi = ((uint32_t)self->bytes[0] << 24) |
-                          ((uint32_t)self->bytes[1] << 16) |
-                          ((uint32_t)self->bytes[2] << 8) |
-                          ((uint32_t)self->bytes[3]);
-        uint16_t time_mid = ((uint16_t)self->bytes[4] << 8) |
-                           ((uint16_t)self->bytes[5]);
+        uint32_t time_hi = get_time_low(self);  // In v6, time_low position holds time_hi
+        uint16_t time_mid = get_time_mid(self);
         uint16_t time_lo = ((uint16_t)(self->bytes[6] & 0x0f) << 8) |
                           ((uint16_t)self->bytes[7]);
 
@@ -727,12 +757,8 @@ Uuid_get_time(uuidobject *self, void *closure)
     }
     else {
         // UUID v1 and others: time_lo (32) | time_mid (16) | ver (4) | time_hi (12) | ... (64)
-        uint32_t time_lo = ((uint32_t)self->bytes[0] << 24) |
-                          ((uint32_t)self->bytes[1] << 16) |
-                          ((uint32_t)self->bytes[2] << 8) |
-                          ((uint32_t)self->bytes[3]);
-        uint16_t time_mid = ((uint16_t)self->bytes[4] << 8) |
-                           ((uint16_t)self->bytes[5]);
+        uint32_t time_lo = get_time_low(self);
+        uint16_t time_mid = get_time_mid(self);
         uint16_t time_hi = ((uint16_t)(self->bytes[6] & 0x0f) << 8) |
                           ((uint16_t)self->bytes[7]);
 
@@ -747,22 +773,15 @@ static PyObject *
 Uuid_get_clock_seq(uuidobject *self, void *closure)
 {
     // clock_seq_hi_variant (byte 8) & 0x3f, then clock_seq_low (byte 9)
-    uint16_t clock_seq = ((uint16_t)(self->bytes[8] & 0x3f) << 8) |
-                         ((uint16_t)self->bytes[9]);
+    uint16_t clock_seq = ((uint16_t)(get_clock_seq_hi_variant(self) & 0x3f) << 8) |
+                         ((uint16_t)get_clock_seq_low(self));
     return PyLong_FromUnsignedLong(clock_seq);
 }
 
 static PyObject *
 Uuid_get_node(uuidobject *self, void *closure)
 {
-    // Last 6 bytes (bytes 10-15) form the 48-bit node
-    uint64_t node = ((uint64_t)self->bytes[10] << 40) |
-                    ((uint64_t)self->bytes[11] << 32) |
-                    ((uint64_t)self->bytes[12] << 24) |
-                    ((uint64_t)self->bytes[13] << 16) |
-                    ((uint64_t)self->bytes[14] << 8) |
-                    ((uint64_t)self->bytes[15]);
-    return PyLong_FromUnsignedLongLong(node);
+    return PyLong_FromUnsignedLongLong(get_node(self));
 }
 
 static PyObject *
@@ -770,6 +789,30 @@ Uuid_get_bytes(uuidobject *self, void *closure)
 {
     // Return the 16 bytes as a Python bytes object
     return PyBytes_FromStringAndSize((const char *)self->bytes, 16);
+}
+
+static PyObject *
+Uuid_get_fields(uuidobject *self, void *closure)
+{
+    // Return a tuple of (time_low, time_mid, time_hi_version,
+    //                     clock_seq_hi_variant, clock_seq_low, node)
+
+    // Use inline functions to get C values directly
+    uint32_t time_low = get_time_low(self);
+    uint16_t time_mid = get_time_mid(self);
+    uint16_t time_hi_version = get_time_hi_version(self);
+    uint8_t clock_seq_hi_variant = get_clock_seq_hi_variant(self);
+    uint8_t clock_seq_low = get_clock_seq_low(self);
+    uint64_t node = get_node(self);
+
+    // Build and return the tuple
+    return Py_BuildValue("(kHHBBK)",
+                         (unsigned long)time_low,
+                         (unsigned short)time_mid,
+                         (unsigned short)time_hi_version,
+                         (unsigned char)clock_seq_hi_variant,
+                         (unsigned char)clock_seq_low,
+                         (unsigned long long)node);
 }
 
 static PyObject *
@@ -885,6 +928,7 @@ static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
     {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
     {"bytes", (getter)Uuid_get_bytes, NULL, "UUID as a 16-byte string", NULL},
+    {"fields", (getter)Uuid_get_fields, NULL, "UUID as a 6-tuple", NULL},
     {"hex", (getter)Uuid_get_hex, NULL, "UUID as a 32-character hex string", NULL},
     {"urn", (getter)Uuid_get_urn, NULL, "UUID as a URN", NULL},
     {"variant", (getter)Uuid_get_variant, NULL, "UUID variant", NULL},
