@@ -1519,5 +1519,45 @@ class TestInternalsWithExtModule(BaseTestInternals, unittest.TestCase):
         self.check_node(node)
 
 
+@unittest.skipUnless(c_uuid, 'requires the C _uuid module')
+class TestCImplementationCompat(unittest.TestCase):
+
+    def test_compatibility(self):
+        import uuid
+
+        PU = uuid._py_UUID
+        CU = uuid._c_UUID
+
+        uuids = [
+            '00000000-0000-0000-0000-000000000000',
+            'ffffffff-ffff-ffff-ffff-ffffffffffff',
+            *(str(uuid.uuid4()) for _ in range(100)),
+            *(str(uuid.uuid7()) for _ in range(100)),
+            *(str(uuid.uuid1()) for _ in range(100)),
+            *(str(uuid.UUID(bytes=os.urandom(16))) for _ in range(10))
+        ]
+
+        for uuid in uuids:
+            with self.subTest(uuid=uuid):
+                p = PU(uuid)
+                u = CU(uuid)
+
+                self.assertEqual(p, u)
+                self.assertEqual(p.hex, u.hex)
+                self.assertEqual(p.int, u.int)
+                self.assertEqual(p.variant, u.variant)
+                self.assertEqual(p.version, u.version)
+                self.assertEqual(p.is_safe, u.is_safe)
+                self.assertEqual(p.bytes, u.bytes)
+                self.assertEqual(p.bytes_le, u.bytes_le)
+                self.assertEqual(p.fields, u.fields)
+                self.assertEqual(p.time_low, u.time_low)
+                self.assertEqual(p.time_mid, u.time_mid)
+                self.assertEqual(p.time_hi_version, u.time_hi_version)
+                self.assertEqual(p.clock_seq_hi_variant, u.clock_seq_hi_variant)
+                self.assertEqual(p.clock_seq_low, u.clock_seq_low)
+                self.assertEqual(p.node, u.node)
+
+
 if __name__ == '__main__':
     unittest.main()
