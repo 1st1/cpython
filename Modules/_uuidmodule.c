@@ -297,9 +297,12 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
     return 0;
 }
 
+
+static const char INT_TO_HEX[] = "0123456789abcdef";
+
 // Lookup table for hex character to value conversion
 // -1 for invalid characters
-static const int8_t _hextable[256] = {
+static const int8_t HEX_TO_INT[256] = {
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
     -1,-1, 0,1,2,3,4,5,6,7,8,9,-1,-1,-1,-1,-1,-1,-1,10,11,12,13,14,15,-1,
@@ -312,6 +315,13 @@ static const int8_t _hextable[256] = {
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
     -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
 };
+
+static inline void
+byte_to_hex(uint8_t byte, char *hex)
+{
+    hex[0] = INT_TO_HEX[(byte >> 4) & 0xf];
+    hex[1] = INT_TO_HEX[byte & 0xf];
+}
 
 static int
 from_hex(uuidobject *self, PyObject *hex)
@@ -370,7 +380,7 @@ from_hex(uuidobject *self, PyObject *hex)
             continue;
         }
 
-        part = _hextable[ch];
+        part = HEX_TO_INT[ch];
         if (part == -1) {
             PyErr_SetString(
                 PyExc_ValueError,
@@ -576,6 +586,19 @@ Uuid_get_is_safe(uuidobject *self, void *closure)
 }
 
 static PyObject *
+Uuid_get_hex(uuidobject *self, void *closure)
+{
+    // Convert 16 bytes to 32 hex characters
+    char hex[32];
+    for (int i = 0; i < 16; i++) {
+        byte_to_hex(self->bytes[i], &hex[i * 2]);
+    }
+
+    // Return as a Python string
+    return PyUnicode_FromStringAndSize(hex, 32);
+}
+
+static PyObject *
 Uuid_get_variant(uuidobject *self, void *closure)
 {
     // Get module state
@@ -630,6 +653,7 @@ Uuid_get_version(uuidobject *self, void *closure)
 static PyGetSetDef Uuid_getset[] = {
     {"int", (getter)Uuid_get_int, NULL, "UUID as a 128-bit integer", NULL},
     {"is_safe", (getter)Uuid_get_is_safe, NULL, "UUID safety status", NULL},
+    {"hex", (getter)Uuid_get_hex, NULL, "UUID as a 32-character hex string", NULL},
     {"variant", (getter)Uuid_get_variant, NULL, "UUID variant", NULL},
     {"version", (getter)Uuid_get_version, NULL, "UUID version", NULL},
     {NULL}  /* Sentinel */
