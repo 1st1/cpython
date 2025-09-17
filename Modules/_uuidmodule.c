@@ -635,7 +635,7 @@ get_version(uuidobject *self)
     // 0xc0 = 0b11000000
     // 0x80 = 0b10000000
     if ((self->bytes[8] & 0xc0) != 0x80) {
-        return -1;
+        return 0;
     }
     return (self->bytes[6] >> 4) & 0xf;
 }
@@ -644,7 +644,7 @@ static PyObject *
 Uuid_get_version(uuidobject *self, void *closure)
 {
     long ver = get_version(self);
-    if (ver == -1) {
+    if (!ver) {
         Py_RETURN_NONE;
     }
     return PyLong_FromLong(ver);
@@ -691,6 +691,78 @@ Uuid_get_clock_seq_low(uuidobject *self, void *closure)
 {
     // Byte 9 (8 bits)
     return PyLong_FromUnsignedLong(self->bytes[9]);
+}
+
+static PyObject *
+Uuid_get_time(uuidobject *self, void *closure)
+{
+    long version = get_version(self);
+
+    if (version == 6) {
+        // UUID v6: time_hi (32) | time_mid (16) | ver (4) | time_lo (12) | ... (64)
+        uint32_t time_hi = ((uint32_t)self->bytes[0] << 24) |
+                          ((uint32_t)self->bytes[1] << 16) |
+                          ((uint32_t)self->bytes[2] << 8) |
+                          ((uint32_t)self->bytes[3]);
+        uint16_t time_mid = ((uint16_t)self->bytes[4] << 8) |
+                           ((uint16_t)self->bytes[5]);
+        uint16_t time_lo = ((uint16_t)(self->bytes[6] & 0x0f) << 8) |
+                          ((uint16_t)self->bytes[7]);
+
+        uint64_t time = ((uint64_t)time_hi << 28) |
+                        ((uint64_t)time_mid << 12) |
+                        (uint64_t)time_lo;
+        return PyLong_FromUnsignedLongLong(time);
+    }
+    else if (version == 7) {
+        // UUID v7: unix_ts_ms (48) | ... (80)
+        // First 6 bytes are the 48-bit timestamp
+        uint64_t unix_ts_ms = ((uint64_t)self->bytes[0] << 40) |
+                             ((uint64_t)self->bytes[1] << 32) |
+                             ((uint64_t)self->bytes[2] << 24) |
+                             ((uint64_t)self->bytes[3] << 16) |
+                             ((uint64_t)self->bytes[4] << 8) |
+                             ((uint64_t)self->bytes[5]);
+        return PyLong_FromUnsignedLongLong(unix_ts_ms);
+    }
+    else {
+        // UUID v1 and others: time_lo (32) | time_mid (16) | ver (4) | time_hi (12) | ... (64)
+        uint32_t time_lo = ((uint32_t)self->bytes[0] << 24) |
+                          ((uint32_t)self->bytes[1] << 16) |
+                          ((uint32_t)self->bytes[2] << 8) |
+                          ((uint32_t)self->bytes[3]);
+        uint16_t time_mid = ((uint16_t)self->bytes[4] << 8) |
+                           ((uint16_t)self->bytes[5]);
+        uint16_t time_hi = ((uint16_t)(self->bytes[6] & 0x0f) << 8) |
+                          ((uint16_t)self->bytes[7]);
+
+        uint64_t time = ((uint64_t)time_hi << 48) |
+                        ((uint64_t)time_mid << 32) |
+                        (uint64_t)time_lo;
+        return PyLong_FromUnsignedLongLong(time);
+    }
+}
+
+static PyObject *
+Uuid_get_clock_seq(uuidobject *self, void *closure)
+{
+    // clock_seq_hi_variant (byte 8) & 0x3f, then clock_seq_low (byte 9)
+    uint16_t clock_seq = ((uint16_t)(self->bytes[8] & 0x3f) << 8) |
+                         ((uint16_t)self->bytes[9]);
+    return PyLong_FromUnsignedLong(clock_seq);
+}
+
+static PyObject *
+Uuid_get_node(uuidobject *self, void *closure)
+{
+    // Last 6 bytes (bytes 10-15) form the 48-bit node
+    uint64_t node = ((uint64_t)self->bytes[10] << 40) |
+                    ((uint64_t)self->bytes[11] << 32) |
+                    ((uint64_t)self->bytes[12] << 24) |
+                    ((uint64_t)self->bytes[13] << 16) |
+                    ((uint64_t)self->bytes[14] << 8) |
+                    ((uint64_t)self->bytes[15]);
+    return PyLong_FromUnsignedLongLong(node);
 }
 
 static PyObject *
@@ -814,6 +886,9 @@ static PyGetSetDef Uuid_getset[] = {
     {"time_hi_version", (getter)Uuid_get_time_hi_version, NULL, "Time high and version field (16 bits)", NULL},
     {"clock_seq_hi_variant", (getter)Uuid_get_clock_seq_hi_variant, NULL, "Clock sequence high and variant field (8 bits)", NULL},
     {"clock_seq_low", (getter)Uuid_get_clock_seq_low, NULL, "Clock sequence low field (8 bits)", NULL},
+    {"time", (getter)Uuid_get_time, NULL, "Time field (60 bits for v1/v6, 48 bits for v7)", NULL},
+    {"clock_seq", (getter)Uuid_get_clock_seq, NULL, "Clock sequence field (14 bits)", NULL},
+    {"node", (getter)Uuid_get_node, NULL, "Node field (48 bits)", NULL},
     {NULL}  /* Sentinel */
 };
 
