@@ -104,10 +104,9 @@ py_windows_has_stable_node(void)
 typedef struct uuidobject {
     PyObject_HEAD
     uint8_t bytes[16];
-    PyObject *cached_int;  // Cached int representation
-    PyObject *is_safe;     // SafeUUID enum value
-    PyObject *weakreflist; // Weak reference list
-    Py_hash_t cached_hash;        // Hash value
+    Py_hash_t cached_hash;
+    PyObject *is_safe;
+    PyObject *weakreflist;
 } uuidobject;
 
 
@@ -416,9 +415,6 @@ _uuid_UUIDBase___init___impl(uuidobject *self, PyObject *hex,
 
         // Set the version number (upper 4 bits of byte 6)
         self->bytes[6] |= (version_num << 4);
-
-        // Clear cached_int if it exists since we modified the bytes
-        Py_CLEAR(self->cached_int);
     }
 
     if (is_safe != NULL) {
@@ -638,9 +634,6 @@ from_int(uuidobject *self, PyObject *int_value)
         return -1;
     }
 
-    // Cache the int value since we already have it
-    self->cached_int = Py_NewRef(int_value);
-
     return 0;
 }
 
@@ -666,13 +659,7 @@ from_fields(uuidobject *self, PyObject *fields)
 static PyObject *
 get_int(uuidobject *self)
 {
-    if (self->cached_int == NULL) {
-        self->cached_int = _PyLong_FromByteArray((unsigned char *)self->bytes, 16, 0, 0);
-        if (self->cached_int == NULL) {
-            return NULL;
-        }
-    }
-    return Py_XNewRef(self->cached_int);
+    return _PyLong_FromByteArray((unsigned char *)self->bytes, 16, 0, 0);
 }
 
 static uuidobject *
@@ -683,7 +670,6 @@ make_uuid(PyTypeObject *type)
         return NULL;
     }
 
-    self->cached_int = NULL;
     self->is_safe = NULL;
     self->weakreflist = NULL;
     self->cached_hash = -1;
@@ -706,7 +692,6 @@ Uuid_dealloc(PyObject *obj)
     if (uuid->weakreflist != NULL) {
         PyObject_ClearWeakRefs(obj);
     }
-    Py_XDECREF(uuid->cached_int);
     Py_XDECREF(uuid->is_safe);
     PyObject_Free(uuid);
 }
