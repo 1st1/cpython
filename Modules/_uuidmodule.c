@@ -146,7 +146,7 @@ typedef struct uuidobject {
 //   111x: Reserved for future definition
 
 #define RANDOM_BUF_SIZE 256
-#define MAX_FREE_LIST_SIZE 100
+#define MAX_FREE_LIST_SIZE 32
 
 /* State of the _uuid module */
 typedef struct {
@@ -818,21 +818,26 @@ get_int(uuidobject *self)
 static uuidobject *
 make_uuid(PyTypeObject *type)
 {
-    uuidobject *self;
+    uuidobject *self = NULL;
+    uuid_state *state = get_uuid_state_by_cls(type);
 
     Py_BEGIN_CRITICAL_SECTION(type);
-    uuid_state *state = get_uuid_state_by_cls(type);
     if (state->freelist_size > 0) {
         self = state->freelist;
         state->freelist = (uuidobject *)self->weakreflist;
         state->freelist_size--;
     }
+    Py_END_CRITICAL_SECTION();
+
+    if (self != NULL) {
+        // Reinitialize the object from freelist
+        _Py_NewReference((PyObject *)self);
+    }
     else {
         self = PyObject_New(uuidobject, type);
-    }
-    Py_END_CRITICAL_SECTION();
-    if (self == NULL) {
-        return NULL;
+        if (self == NULL) {
+            return NULL;
+        }
     }
 
     self->is_safe = NULL;
@@ -862,16 +867,20 @@ Uuid_dealloc(PyObject *obj)
     }
     Py_CLEAR(uuid->is_safe);
 
+    int added_to_freelist = 0;
     Py_BEGIN_CRITICAL_SECTION(type);
     if (state->freelist_size < MAX_FREE_LIST_SIZE) {
         uuidobject *head = state->freelist;
         state->freelist = uuid;
         uuid->weakreflist = (PyObject *)head;
         state->freelist_size++;
+        added_to_freelist = 1;
     }
     Py_END_CRITICAL_SECTION();
 
-    PyObject_Free(uuid);
+    if (!added_to_freelist) {
+        PyObject_Free(uuid);
+    }
 }
 
 
