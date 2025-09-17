@@ -21,6 +21,16 @@
   #include <uuid/uuid.h>
 #endif
 
+#ifdef HAVE_UNISTD_H
+#  include <unistd.h>             // getpid()
+#endif
+#ifdef HAVE_PROCESS_H
+#  include <process.h>            // getpid()
+#endif
+#ifdef MS_WINDOWS
+#  include <windows.h>            // GetCurrentProcessId()
+#endif
+
 #ifdef MS_WINDOWS
 #include <rpc.h>
 #endif
@@ -135,7 +145,7 @@ typedef struct uuidobject {
 //   110x: Reserved for Microsoft compatibility
 //   111x: Reserved for future definition
 
-#define RANDOM_BUF_SIZE 160
+#define RANDOM_BUF_SIZE 256
 
 /* State of the _uuid module */
 typedef struct {
@@ -159,6 +169,7 @@ typedef struct {
 
     uint8_t random_buf[RANDOM_BUF_SIZE];
     uint64_t random_idx;
+    uint64_t random_last_pid;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -173,6 +184,15 @@ static int from_hex(uuidobject *self, PyObject *hex);
 static int from_bytes_le(uuidobject *self, Py_buffer *bytes_le);
 static int from_int(uuidobject *self, PyObject *int_value);
 static int from_fields(uuidobject *self, PyObject *fields);
+
+static uint64_t
+uuid_getpid(void) {
+    #if !defined(MS_WINDOWS) || defined(MS_WINDOWS_DESKTOP) || defined(MS_WINDOWS_SYSTEM)
+    return (uint64_t)getpid();
+#else
+    return (uint64_t)GetCurrentProcessId();
+#endif
+}
 
 static inline uuid_state *
 get_uuid_state(PyObject *mod)
@@ -202,6 +222,15 @@ gen_random(uuid_state *state, uint8_t *bytes, Py_ssize_t size)
 
     // IMPORTANT: callers should have a critical section or a lock
     // around this function.
+
+    uint64_t pid = uuid_getpid();
+    if (pid != state->random_last_pid) {
+        // The main concern to take core of with caching entropy is handling
+        // fork -- we don't want the child process to share any entropy with
+        // us. Luckily getpid() is fast.
+        state->random_last_pid = pid;
+        state->random_idx = RANDOM_BUF_SIZE;
+    }
 
     if (state->random_idx + size <= RANDOM_BUF_SIZE) {
         memcpy(bytes, state->random_buf + state->random_idx, size);
@@ -1437,6 +1466,7 @@ uuid_exec(PyObject *module)
 
     state->last_timestamp_v7 = 0;
     state->last_counter_v7 = 0;
+    state->random_last_pid = uuid_getpid();
 
     state->random_idx = RANDOM_BUF_SIZE;
 
