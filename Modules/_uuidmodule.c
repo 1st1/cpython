@@ -822,6 +822,51 @@ Uuid_nb_int(PyObject *self)
 }
 
 static PyObject *
+Uuid_richcompare(PyObject *self, PyObject *other, int op)
+{
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    if (!PyObject_TypeCheck(other, state->UuidType)) {
+        Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    uuidobject *uuid_self = (uuidobject *)self;
+    uuidobject *uuid_other = (uuidobject *)other;
+
+    int cmp = memcmp(uuid_self->bytes, uuid_other->bytes, 16);
+
+    int result;
+    switch (op) {
+        case Py_EQ:
+            result = (cmp == 0);
+            break;
+        case Py_NE:
+            result = (cmp != 0);
+            break;
+        case Py_LT:
+            result = (cmp < 0);
+            break;
+        case Py_LE:
+            result = (cmp <= 0);
+            break;
+        case Py_GT:
+            result = (cmp > 0);
+            break;
+        case Py_GE:
+            result = (cmp >= 0);
+            break;
+        default:
+            Py_RETURN_NOTIMPLEMENTED;
+    }
+
+    if (result) {
+        Py_RETURN_TRUE;
+    } else {
+        Py_RETURN_FALSE;
+    }
+}
+
+static PyObject *
 Uuid_str(PyObject *self)
 {
     uuidobject *uuid = (uuidobject *)self;
@@ -960,6 +1005,7 @@ static PyType_Slot Uuid_slots[] = {
     {Py_tp_str, Uuid_str},
     {Py_tp_repr, Uuid_repr},
     {Py_tp_hash, Uuid_hash},
+    {Py_tp_richcompare, Uuid_richcompare},
     {Py_nb_int, Uuid_nb_int},
     {0, NULL},
 };
