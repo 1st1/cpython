@@ -1527,14 +1527,16 @@ class TestCImplementationCompat(unittest.TestCase):
 
         PU = uuid._py_UUID
         CU = uuid._c_UUID
+        N = 1000
 
         uuids = [
             '00000000-0000-0000-0000-000000000000',
             'ffffffff-ffff-ffff-ffff-ffffffffffff',
-            *(str(uuid.uuid4()) for _ in range(100)),
-            *(str(uuid.uuid7()) for _ in range(100)),
-            *(str(uuid.uuid1()) for _ in range(100)),
-            *(str(uuid.UUID(bytes=os.urandom(16))) for _ in range(10))
+            'c0bec4fd-e4e3-050c-a362-da3f734ffd56',  # regression
+            *(str(uuid.uuid4()) for _ in range(N)),
+            *(str(uuid.uuid7()) for _ in range(N)),
+            *(str(uuid.uuid1()) for _ in range(N)),
+            *(str(uuid.UUID(bytes=os.urandom(16))) for _ in range(N))
         ]
 
         for uuid in uuids:
