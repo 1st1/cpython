@@ -146,7 +146,6 @@ typedef struct uuidobject {
 //   111x: Reserved for future definition
 
 #define RANDOM_BUF_SIZE 256
-#define MAX_FREE_LIST_SIZE 32
 
 /* State of the _uuid module */
 typedef struct {
@@ -164,10 +163,6 @@ typedef struct {
     uint8_t random_buf[RANDOM_BUF_SIZE];
     uint64_t random_idx;
     uint64_t random_last_pid;
-
-    // A freelist for uuid objects -- 15-20% performance boost.
-    uuidobject *freelist;
-    uint64_t freelist_size;
 } uuid_state;
 
 #include "clinic/_uuidmodule.c.h"
@@ -873,21 +868,8 @@ static uuidobject *
 make_uuid(PyTypeObject *type)
 {
     uuidobject *self = NULL;
-    uuid_state *state = get_uuid_state_by_cls(type);
 
-    Py_BEGIN_CRITICAL_SECTION(type);
-    if (state->freelist_size > 0) {
-        self = state->freelist;
-        state->freelist = (uuidobject *)self->weakreflist;
-        state->freelist_size--;
-    }
-    Py_END_CRITICAL_SECTION();
-
-    if (self != NULL) {
-        // Reinitialize the object from freelist
-        _Py_NewReference((PyObject *)self);
-    }
-    else {
+    if (self == NULL) {
         self = PyObject_New(uuidobject, type);
         if (self == NULL) {
             return NULL;
@@ -916,30 +898,14 @@ static void
 Uuid_dealloc(PyObject *obj)
 {
     PyTypeObject *type = Py_TYPE(obj);
-    uuid_state *state = get_uuid_state_by_cls(type);
-
     uuidobject *uuid = (uuidobject *)obj;
+
     if (uuid->weakreflist != NULL) {
         PyObject_ClearWeakRefs(obj);
     }
     Py_CLEAR(uuid->is_safe);
 
-    int added_to_freelist = 0;
-    Py_BEGIN_CRITICAL_SECTION(type);
-    if (state->freelist_size < MAX_FREE_LIST_SIZE) {
-        uuidobject *head = state->freelist;
-        state->freelist = uuid;
-        uuid->weakreflist = (PyObject *)head;
-        state->freelist_size++;
-        added_to_freelist = 1;
-    }
-    Py_END_CRITICAL_SECTION();
-
-    if (!added_to_freelist) {
-        type->tp_free(uuid);
-        // UUID is a heap allocated type so we have to decref the type ref
-        Py_DECREF(type);
-    }
+    type->tp_free(obj);
 }
 
 
@@ -1236,16 +1202,6 @@ module_clear(PyObject *mod)
     Py_CLEAR(state->safe_uuid);
     Py_CLEAR(state->uint128_max);
 
-    if (state->freelist != NULL) {
-        while (state->freelist != NULL) {
-            uuidobject *cur = state->freelist;
-            state->freelist = (uuidobject *)cur->weakreflist;
-            PyObject_Free(cur);
-        }
-        state->freelist = NULL;
-        state->freelist_size = 0;
-    }
-
     return 0;
 }
 
@@ -1348,9 +1304,6 @@ uuid_exec(PyObject *module)
     state->last_timestamp_v7 = 0;
     state->last_counter_v7 = 0;
     state->random_last_pid = uuid_getpid();
-
-    state->freelist = NULL;
-    state->freelist_size = 0;
 
     state->random_idx = RANDOM_BUF_SIZE;
 
