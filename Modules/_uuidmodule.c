@@ -192,6 +192,8 @@ uuid_getpid(void) {
 #endif
 }
 
+static struct PyModuleDef uuidmodule;
+
 static inline uuid_state *
 get_uuid_state(PyObject *mod)
 {
@@ -203,7 +205,9 @@ get_uuid_state(PyObject *mod)
 static inline uuid_state *
 get_uuid_state_by_cls(PyTypeObject *cls)
 {
-    uuid_state *state = (uuid_state *)PyType_GetModuleState(cls);
+    PyObject *module = PyType_GetModuleByDef(cls, &uuidmodule);
+    assert(module != NULL);
+    uuid_state *state = get_uuid_state(module);
     assert(state != NULL);
     return state;
 }
