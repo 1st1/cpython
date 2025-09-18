@@ -397,6 +397,7 @@ _get_SafeUUID(uuid_state *state)
     }
 
     Py_DECREF(uuid_mod);
+    Py_INCREF(state->safe_uuid);
     return state->safe_uuid;
 }
 
@@ -867,13 +868,9 @@ get_int(uuidobject *self)
 static uuidobject *
 make_uuid(PyTypeObject *type)
 {
-    uuidobject *self = NULL;
-
+    uuidobject *self = (uuidobject *)type->tp_alloc(type, 0);
     if (self == NULL) {
-        self = PyObject_New(uuidobject, type);
-        if (self == NULL) {
-            return NULL;
-        }
+        return NULL;
     }
 
     self->is_safe = NULL;
