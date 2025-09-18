@@ -59,22 +59,22 @@ _uuid_uuid7(PyObject *module, PyObject *Py_UNUSED(ignored))
     return return_value;
 }
 
-PyDoc_STRVAR(_uuid_UUID___init____doc__,
-"UUID(hex=<unrepresentable>, bytes=None, bytes_le=None,\n"
-"     fields=<unrepresentable>, int=<unrepresentable>,\n"
-"     version=<unrepresentable>, *, is_safe=<unrepresentable>)\n"
+PyDoc_STRVAR(_uuid_BaseUUID___init____doc__,
+"BaseUUID(hex=<unrepresentable>, bytes=None, bytes_le=None,\n"
+"         fields=<unrepresentable>, int=<unrepresentable>,\n"
+"         version=<unrepresentable>, *, is_safe=<unrepresentable>)\n"
 "--\n"
 "\n"
 "UUID is a fast base implementation type for uuid.UUID.");
 
 static int
-_uuid_UUID___init___impl(uuidobject *self, PyObject *hex, Py_buffer *bytes,
-                         Py_buffer *bytes_le, PyObject *fields,
-                         PyObject *int_value, PyObject *version,
-                         PyObject *is_safe);
+_uuid_BaseUUID___init___impl(uuidobject *self, PyObject *hex,
+                             Py_buffer *bytes, Py_buffer *bytes_le,
+                             PyObject *fields, PyObject *int_value,
+                             PyObject *version, PyObject *is_safe);
 
 static int
-_uuid_UUID___init__(PyObject *self, PyObject *args, PyObject *kwargs)
+_uuid_BaseUUID___init__(PyObject *self, PyObject *args, PyObject *kwargs)
 {
     int return_value = -1;
     #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
@@ -100,7 +100,7 @@ _uuid_UUID___init__(PyObject *self, PyObject *args, PyObject *kwargs)
     static const char * const _keywords[] = {"hex", "bytes", "bytes_le", "fields", "int", "version", "is_safe", NULL};
     static _PyArg_Parser _parser = {
         .keywords = _keywords,
-        .fname = "UUID",
+        .fname = "BaseUUID",
         .kwtuple = KWTUPLE,
     };
     #undef KWTUPLE
@@ -126,7 +126,7 @@ _uuid_UUID___init__(PyObject *self, PyObject *args, PyObject *kwargs)
     }
     if (fastargs[0]) {
         if (!PyUnicode_Check(fastargs[0])) {
-            _PyArg_BadArgument("UUID", "argument 'hex'", "str", fastargs[0]);
+            _PyArg_BadArgument("BaseUUID", "argument 'hex'", "str", fastargs[0]);
             goto exit;
         }
         hex = fastargs[0];
@@ -174,7 +174,7 @@ skip_optional_pos:
     }
     is_safe = fastargs[6];
 skip_optional_kwonly:
-    return_value = _uuid_UUID___init___impl((uuidobject *)self, hex, &bytes, &bytes_le, fields, int_value, version, is_safe);
+    return_value = _uuid_BaseUUID___init___impl((uuidobject *)self, hex, &bytes, &bytes_le, fields, int_value, version, is_safe);
 
 exit:
     /* Cleanup for bytes */
@@ -189,94 +189,25 @@ exit:
     return return_value;
 }
 
-PyDoc_STRVAR(_uuid_UUID__from_int__doc__,
+PyDoc_STRVAR(_uuid_BaseUUID__from_int__doc__,
 "_from_int($type, value, /)\n"
 "--\n"
 "\n"
 "Create a UUID from an integer value. Internal use only.");
 
-#define _UUID_UUID__FROM_INT_METHODDEF    \
-    {"_from_int", (PyCFunction)_uuid_UUID__from_int, METH_O|METH_CLASS, _uuid_UUID__from_int__doc__},
+#define _UUID_BASEUUID__FROM_INT_METHODDEF    \
+    {"_from_int", (PyCFunction)_uuid_BaseUUID__from_int, METH_O|METH_CLASS, _uuid_BaseUUID__from_int__doc__},
 
 static PyObject *
-_uuid_UUID__from_int_impl(PyTypeObject *type, PyObject *value);
+_uuid_BaseUUID__from_int_impl(PyTypeObject *type, PyObject *value);
 
 static PyObject *
-_uuid_UUID__from_int(PyObject *type, PyObject *value)
+_uuid_BaseUUID__from_int(PyObject *type, PyObject *value)
 {
     PyObject *return_value = NULL;
 
-    return_value = _uuid_UUID__from_int_impl((PyTypeObject *)type, value);
+    return_value = _uuid_BaseUUID__from_int_impl((PyTypeObject *)type, value);
 
     return return_value;
 }
-
-PyDoc_STRVAR(_uuid_UUID___getstate____doc__,
-"__getstate__($self, /)\n"
-"--\n"
-"\n"
-"Return the UUID\'s state for pickling.");
-
-#define _UUID_UUID___GETSTATE___METHODDEF    \
-    {"__getstate__", (PyCFunction)_uuid_UUID___getstate__, METH_NOARGS, _uuid_UUID___getstate____doc__},
-
-static PyObject *
-_uuid_UUID___getstate___impl(uuidobject *self);
-
-static PyObject *
-_uuid_UUID___getstate__(PyObject *self, PyObject *Py_UNUSED(ignored))
-{
-    return _uuid_UUID___getstate___impl((uuidobject *)self);
-}
-
-PyDoc_STRVAR(_uuid_UUID___setstate____doc__,
-"__setstate__($self, state, /)\n"
-"--\n"
-"\n"
-"Restore the UUID\'s state from pickling.\n"
-"\n"
-"Expects a dictionary with \'int\' and optionally \'is_safe\' keys.");
-
-#define _UUID_UUID___SETSTATE___METHODDEF    \
-    {"__setstate__", (PyCFunction)_uuid_UUID___setstate__, METH_O, _uuid_UUID___setstate____doc__},
-
-static PyObject *
-_uuid_UUID___setstate___impl(uuidobject *self, PyObject *state);
-
-static PyObject *
-_uuid_UUID___setstate__(PyObject *self, PyObject *state)
-{
-    PyObject *return_value = NULL;
-
-    return_value = _uuid_UUID___setstate___impl((uuidobject *)self, state);
-
-    return return_value;
-}
-
-PyDoc_STRVAR(_uuid_UUID___reduce_ex____doc__,
-"__reduce_ex__($self, protocol, /)\n"
-"--\n"
-"\n");
-
-#define _UUID_UUID___REDUCE_EX___METHODDEF    \
-    {"__reduce_ex__", (PyCFunction)_uuid_UUID___reduce_ex__, METH_O, _uuid_UUID___reduce_ex____doc__},
-
-static PyObject *
-_uuid_UUID___reduce_ex___impl(uuidobject *self, int protocol);
-
-static PyObject *
-_uuid_UUID___reduce_ex__(PyObject *self, PyObject *arg)
-{
-    PyObject *return_value = NULL;
-    int protocol;
-
-    protocol = PyLong_AsInt(arg);
-    if (protocol == -1 && PyErr_Occurred()) {
-        goto exit;
-    }
-    return_value = _uuid_UUID___reduce_ex___impl((uuidobject *)self, protocol);
-
-exit:
-    return return_value;
-}
-/*[clinic end generated code: output=cde21bfd1d335b0e input=a9049054013a1b77]*/
+/*[clinic end generated code: output=5573e48761db283b input=a9049054013a1b77]*/

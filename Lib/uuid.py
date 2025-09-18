@@ -134,7 +134,92 @@ except ImportError:
     _UuidCreate = None
 
 
-class UUID:
+class _UUIDMixin:
+
+    __slots__ = ()
+
+    @property
+    def bytes_le(self):
+        bytes = self.bytes
+        return (bytes[4-1::-1] + bytes[6-1:4-1:-1] + bytes[8-1:6-1:-1] +
+                bytes[8:])
+
+    @property
+    def fields(self):
+        return (self.time_low, self.time_mid, self.time_hi_version,
+                self.clock_seq_hi_variant, self.clock_seq_low, self.node)
+
+    @property
+    def time_low(self):
+        return self.int >> 96
+
+    @property
+    def time_mid(self):
+        return (self.int >> 80) & 0xffff
+
+    @property
+    def time_hi_version(self):
+        return (self.int >> 64) & 0xffff
+
+    @property
+    def clock_seq_hi_variant(self):
+        return (self.int >> 56) & 0xff
+
+    @property
+    def clock_seq_low(self):
+        return (self.int >> 48) & 0xff
+
+    @property
+    def time(self):
+        if self.version == 6:
+            # time_hi (32) | time_mid (16) | ver (4) | time_lo (12) | ... (64)
+            time_hi = self.int >> 96
+            time_lo = (self.int >> 64) & 0x0fff
+            return time_hi << 28 | (self.time_mid << 12) | time_lo
+        elif self.version == 7:
+            # unix_ts_ms (48) | ... (80)
+            return self.int >> 80
+        else:
+            # time_lo (32) | time_mid (16) | ver (4) | time_hi (12) | ... (64)
+            #
+            # For compatibility purposes, we do not warn or raise when the
+            # version is not 1 (timestamp is irrelevant to other versions).
+            time_hi = (self.int >> 64) & 0x0fff
+            time_lo = self.int >> 96
+            return time_hi << 48 | (self.time_mid << 32) | time_lo
+
+    @property
+    def clock_seq(self):
+        return (((self.clock_seq_hi_variant & 0x3f) << 8) |
+                self.clock_seq_low)
+
+    @property
+    def node(self):
+        return self.int & 0xffffffffffff
+
+    @property
+    def urn(self):
+        return 'urn:uuid:' + str(self)
+
+    @property
+    def variant(self):
+        if not self.int & (0x8000 << 48):
+            return RESERVED_NCS
+        elif not self.int & (0x4000 << 48):
+            return RFC_4122
+        elif not self.int & (0x2000 << 48):
+            return RESERVED_MICROSOFT
+        else:
+            return RESERVED_FUTURE
+
+    @property
+    def version(self):
+        # The version bits are only meaningful for RFC 4122/9562 UUIDs.
+        if self.variant == RFC_4122:
+            return int((self.int >> 76) & 0xf)
+
+
+class UUID(_UUIDMixin):
     """Instances of the UUID class represent UUIDs as specified in RFC 4122.
     UUID objects are immutable, hashable, and usable as dictionary keys.
     Converting a UUID to a string with str() yields something in the form
@@ -373,88 +458,23 @@ class UUID:
         return self.int.to_bytes(16)  # big endian
 
     @property
-    def bytes_le(self):
-        bytes = self.bytes
-        return (bytes[4-1::-1] + bytes[6-1:4-1:-1] + bytes[8-1:6-1:-1] +
-                bytes[8:])
-
-    @property
-    def fields(self):
-        return (self.time_low, self.time_mid, self.time_hi_version,
-                self.clock_seq_hi_variant, self.clock_seq_low, self.node)
-
-    @property
-    def time_low(self):
-        return self.int >> 96
-
-    @property
-    def time_mid(self):
-        return (self.int >> 80) & 0xffff
-
-    @property
-    def time_hi_version(self):
-        return (self.int >> 64) & 0xffff
-
-    @property
-    def clock_seq_hi_variant(self):
-        return (self.int >> 56) & 0xff
-
-    @property
-    def clock_seq_low(self):
-        return (self.int >> 48) & 0xff
-
-    @property
-    def time(self):
-        if self.version == 6:
-            # time_hi (32) | time_mid (16) | ver (4) | time_lo (12) | ... (64)
-            time_hi = self.int >> 96
-            time_lo = (self.int >> 64) & 0x0fff
-            return time_hi << 28 | (self.time_mid << 12) | time_lo
-        elif self.version == 7:
-            # unix_ts_ms (48) | ... (80)
-            return self.int >> 80
-        else:
-            # time_lo (32) | time_mid (16) | ver (4) | time_hi (12) | ... (64)
-            #
-            # For compatibility purposes, we do not warn or raise when the
-            # version is not 1 (timestamp is irrelevant to other versions).
-            time_hi = (self.int >> 64) & 0x0fff
-            time_lo = self.int >> 96
-            return time_hi << 48 | (self.time_mid << 32) | time_lo
-
-    @property
-    def clock_seq(self):
-        return (((self.clock_seq_hi_variant & 0x3f) << 8) |
-                self.clock_seq_low)
-
-    @property
-    def node(self):
-        return self.int & 0xffffffffffff
-
-    @property
     def hex(self):
         return self.bytes.hex()
 
-    @property
-    def urn(self):
-        return 'urn:uuid:' + str(self)
 
-    @property
-    def variant(self):
-        if not self.int & (0x8000 << 48):
-            return RESERVED_NCS
-        elif not self.int & (0x4000 << 48):
-            return RFC_4122
-        elif not self.int & (0x2000 << 48):
-            return RESERVED_MICROSOFT
-        else:
-            return RESERVED_FUTURE
 
-    @property
-    def version(self):
-        # The version bits are only meaningful for RFC 4122/9562 UUIDs.
-        if self.variant == RFC_4122:
-            return int((self.int >> 76) & 0xf)
+_py_UUID = UUID
+
+_c_UUID = None
+try:
+    from _uuid import BaseUUID as _c_BaseUUID
+except ImportError:
+    _c_BaseUUID = None
+else:
+    class UUID(_c_BaseUUID, _UUIDMixin):
+        __slots__ = ()
+
+    _c_UUID = UUID
 
 
 def _get_command_stdout(command, *args):
