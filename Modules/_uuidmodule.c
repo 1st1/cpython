@@ -381,8 +381,7 @@ static PyObject *
 _get_SafeUUID(uuid_state *state)
 {
     if (state->safe_uuid != NULL) {
-        Py_INCREF(state->safe_uuid);
-        return state->safe_uuid;
+        return Py_NewRef(state->safe_uuid);
     }
 
     PyObject *uuid_mod = PyImport_ImportModule("uuid");
@@ -397,8 +396,7 @@ _get_SafeUUID(uuid_state *state)
     }
 
     Py_DECREF(uuid_mod);
-    Py_INCREF(state->safe_uuid);
-    return state->safe_uuid;
+    return Py_NewRef(state->safe_uuid);
 }
 
 static PyObject *
@@ -915,25 +913,26 @@ Uuid_get_int(uuidobject *self, void *closure)
 static PyObject *
 Uuid_get_is_safe(uuidobject *self, void *closure)
 {
-    if (self->is_safe == NULL || self->is_safe == Py_None) {
-        uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
-
-        PyObject *safe_uuid = get_SafeUUID(state);
-        if (safe_uuid == NULL) {
-            return NULL;
-        }
-        PyObject *unknown = PyObject_GetAttrString(safe_uuid, "unknown");
-        if (unknown == NULL) {
-            Py_DECREF(safe_uuid);
-            return NULL;
-        }
-        Py_DECREF(safe_uuid);
-        Py_CLEAR(self->is_safe);
-        self->is_safe = unknown;
-        Py_INCREF(unknown);
-        return unknown;
+    if (self->is_safe != NULL && self->is_safe != Py_None) {
+        return Py_NewRef(self->is_safe);
     }
-    return Py_NewRef(self->is_safe);
+
+    uuid_state *state = get_uuid_state_by_cls(Py_TYPE(self));
+
+    PyObject *safe_uuid = get_SafeUUID(state);
+    if (safe_uuid == NULL) {
+        return NULL;
+    }
+    PyObject *unknown = PyObject_GetAttrString(safe_uuid, "unknown");
+    if (unknown == NULL) {
+        Py_DECREF(safe_uuid);
+        return NULL;
+    }
+    Py_DECREF(safe_uuid);
+    Py_CLEAR(self->is_safe);
+    self->is_safe = unknown;
+
+    return Py_NewRef(unknown);
 }
 
 static PyObject *

@@ -977,15 +977,15 @@ def uuid8(a=None, b=None, c=None):
 
 _py_uuid4 = uuid4
 _py_uuid7 = uuid7
-_py_UUID = UUID
+# _py_UUID = UUID
 try:
-    from _uuid import UUID, uuid4, uuid7
+    from _uuid import uuid4, uuid7
 except ImportError:
-    _c_UUID = None
+    # _c_UUID = None
     _c_uuid4 = None
     _c_uuid7 = None
 else:
-    _c_UUID = UUID
+    # _c_UUID = UUID
     _c_uuid4 = uuid4
     _c_uuid7 = uuid7
 
