@@ -215,7 +215,7 @@ get_uuid_state_by_cls(PyTypeObject *cls)
 }
 
 // Forward declaration
-static PyObject *uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16]);
+static PyObject *uuid_from_bytes_array(uuid_state *state, uint8_t bytes[16]);
 
 static int
 gen_random(uuid_state *state, uint8_t *bytes, Py_ssize_t size)
@@ -294,7 +294,7 @@ _uuid_uuid4_impl(PyObject *module)
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
 
-    return uuid_from_bytes_array(state->UuidType, bytes);
+    return uuid_from_bytes_array(state, bytes);
 }
 
 static inline int
@@ -401,7 +401,7 @@ _uuid_uuid7_impl(PyObject *module)
     state->last_timestamp_v7 = timestamp_ms;
     state->last_counter_v7 = counter;
 
-    return uuid_from_bytes_array(state->UuidType, bytes);
+    return uuid_from_bytes_array(state, bytes);
 }
 
 static PyObject *
@@ -963,7 +963,6 @@ Uuid_dealloc(PyObject *obj)
         && state->freelist_size < MAX_FREE_LIST_SIZE
     ) {
         PyObject_GC_UnTrack(uuid);
-        type->tp_clear(uuid);
         uuidobject *head = state->freelist;
         state->freelist = uuid;
         uuid->weakreflist = (PyObject *)head;
@@ -1030,9 +1029,12 @@ Uuid_get_bytes(uuidobject *self, void *closure)
 
 
 static PyObject *
-uuid_from_bytes_array(PyTypeObject *type, uint8_t bytes[16])
+uuid_from_bytes_array(uuid_state *state, uint8_t bytes[16])
 {
-    uuidobject *self = make_uuid(type);
+    uuidobject *self = make_uuid(
+        state->freelist_type == NULL ? state->UuidType : state->freelist_type
+    );
+
     if (self == NULL) {
         return NULL;
     }

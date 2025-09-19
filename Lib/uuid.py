@@ -112,15 +112,6 @@ _RFC_4122_VERSION_7_FLAGS = ((7 << 76) | (0x8000 << 48))
 _RFC_4122_VERSION_8_FLAGS = ((8 << 76) | (0x8000 << 48))
 
 
-def _unpickle(state):
-    """Internal function to unpickle a UUID from a state dictionary."""
-    # This is also used by the C extension module for pickle compatibility
-    # with protocols 0 & 1.
-    obj = UUID.__new__(UUID)
-    obj.__setstate__(state)
-    return obj
-
-
 # Import optional C extension at toplevel, to help disabling it when testing
 try:
     import _uuid
@@ -389,11 +380,6 @@ class UUID(_UUIDMixin):
         object.__setattr__(self, 'int', value)
         object.__setattr__(self, 'is_safe', SafeUUID.unknown)
         return self
-
-    def __reduce_ex__(self, protocol):
-        # Primarily we define __reduce_ex__ to make the C implementation
-        # compatible with protocols 0 & 1.
-        return _unpickle, (self.__getstate__(),)
 
     def __getstate__(self):
         d = {'int': self.int}
