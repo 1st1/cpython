@@ -458,8 +458,15 @@ try:
 except ImportError:
     _c_BaseUUID = None
 else:
-    class UUID(_c_BaseUUID, _UUIDMixin):
-        __slots__ = ()
+    UUID = type(
+        'UUID',
+        (_c_BaseUUID,),
+        {k: v for k, v in _UUIDMixin.__dict__.items() if not k.startswith('__')}
+    )
+
+    # class UUID(_c_BaseUUID, _UUIDMixin):
+    #     __slots__ = ()
+
 
     _c_UUID = UUID
 
