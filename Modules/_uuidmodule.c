@@ -901,18 +901,18 @@ make_uuid(PyTypeObject *type)
     uuidobject *self = NULL;
     uuid_state *state = get_uuid_state_by_cls(type);
 
-    Py_BEGIN_CRITICAL_SECTION(type);
-    if (state != NULL
-        && state->freelist_size > 0
-        && state->freelist_type != NULL
-        && type == state->freelist_type
-    ) {
-        self = state->freelist;
-        state->freelist = (uuidobject *)self->weakreflist;
-        state->freelist_size--;
-        PyObject_GC_Track(self);
-    }
-    Py_END_CRITICAL_SECTION();
+    // Py_BEGIN_CRITICAL_SECTION(type);
+    // if (state != NULL
+    //     && state->freelist_size > 0
+    //     && state->freelist_type != NULL
+    //     && type == state->freelist_type
+    // ) {
+    //     self = state->freelist;
+    //     state->freelist = (uuidobject *)self->weakreflist;
+    //     state->freelist_size--;
+    //     PyObject_GC_Track(self);
+    // }
+    // Py_END_CRITICAL_SECTION();
 
     if (self != NULL) {
         // Reinitialize the object from freelist
@@ -947,6 +947,7 @@ static void
 Uuid_dealloc(PyObject *obj)
 {
     PyTypeObject *type = Py_TYPE(obj);
+    // printf("Uuid_dealloc: %s\n", type->tp_name);
     uuid_state *state = get_uuid_state_by_cls(type);
     uuidobject *uuid = (uuidobject *)obj;
 
@@ -956,20 +957,20 @@ Uuid_dealloc(PyObject *obj)
     Py_CLEAR(uuid->is_safe);
 
     int added_to_freelist = 0;
-    Py_BEGIN_CRITICAL_SECTION(type);
-    if (state != NULL
-        && state->freelist_type != NULL
-        && type == state->freelist_type
-        && state->freelist_size < MAX_FREE_LIST_SIZE
-    ) {
-        PyObject_GC_UnTrack(uuid);
-        uuidobject *head = state->freelist;
-        state->freelist = uuid;
-        uuid->weakreflist = (PyObject *)head;
-        state->freelist_size++;
-        added_to_freelist = 1;
-    }
-    Py_END_CRITICAL_SECTION();
+    // Py_BEGIN_CRITICAL_SECTION(type);
+    // if (state != NULL
+    //     && state->freelist_type != NULL
+    //     && type == state->freelist_type
+    //     && state->freelist_size < MAX_FREE_LIST_SIZE
+    // ) {
+    //     PyObject_GC_UnTrack(uuid);
+    //     uuidobject *head = state->freelist;
+    //     state->freelist = uuid;
+    //     uuid->weakreflist = (PyObject *)head;
+    //     state->freelist_size++;
+    //     added_to_freelist = 1;
+    // }
+    // Py_END_CRITICAL_SECTION();
 
     if (!added_to_freelist) {
         type->tp_free(uuid);
