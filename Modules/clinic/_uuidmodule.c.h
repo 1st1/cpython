@@ -9,6 +9,65 @@ preserve
 #include "pycore_critical_section.h"// Py_BEGIN_CRITICAL_SECTION()
 #include "pycore_modsupport.h"    // _PyArg_UnpackKeywords()
 
+PyDoc_STRVAR(_uuid__register_freelist_type__doc__,
+"_register_freelist_type($module, /, tp)\n"
+"--\n"
+"\n");
+
+#define _UUID__REGISTER_FREELIST_TYPE_METHODDEF    \
+    {"_register_freelist_type", _PyCFunction_CAST(_uuid__register_freelist_type), METH_FASTCALL|METH_KEYWORDS, _uuid__register_freelist_type__doc__},
+
+static PyObject *
+_uuid__register_freelist_type_impl(PyObject *module, PyObject *tp);
+
+static PyObject *
+_uuid__register_freelist_type(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames)
+{
+    PyObject *return_value = NULL;
+    #if defined(Py_BUILD_CORE) && !defined(Py_BUILD_CORE_MODULE)
+
+    #define NUM_KEYWORDS 1
+    static struct {
+        PyGC_Head _this_is_not_used;
+        PyObject_VAR_HEAD
+        Py_hash_t ob_hash;
+        PyObject *ob_item[NUM_KEYWORDS];
+    } _kwtuple = {
+        .ob_base = PyVarObject_HEAD_INIT(&PyTuple_Type, NUM_KEYWORDS)
+        .ob_hash = -1,
+        .ob_item = { &_Py_ID(tp), },
+    };
+    #undef NUM_KEYWORDS
+    #define KWTUPLE (&_kwtuple.ob_base.ob_base)
+
+    #else  // !Py_BUILD_CORE
+    #  define KWTUPLE NULL
+    #endif  // !Py_BUILD_CORE
+
+    static const char * const _keywords[] = {"tp", NULL};
+    static _PyArg_Parser _parser = {
+        .keywords = _keywords,
+        .fname = "_register_freelist_type",
+        .kwtuple = KWTUPLE,
+    };
+    #undef KWTUPLE
+    PyObject *argsbuf[1];
+    PyObject *tp;
+
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser,
+            /*minpos*/ 1, /*maxpos*/ 1, /*minkw*/ 0, /*varpos*/ 0, argsbuf);
+    if (!args) {
+        goto exit;
+    }
+    tp = args[0];
+    Py_BEGIN_CRITICAL_SECTION(module);
+    return_value = _uuid__register_freelist_type_impl(module, tp);
+    Py_END_CRITICAL_SECTION();
+
+exit:
+    return return_value;
+}
+
 PyDoc_STRVAR(_uuid_uuid4__doc__,
 "uuid4($module, /)\n"
 "--\n"
@@ -210,4 +269,4 @@ _uuid_BaseUUID__from_int(PyObject *type, PyObject *value)
 
     return return_value;
 }
-/*[clinic end generated code: output=5573e48761db283b input=a9049054013a1b77]*/
+/*[clinic end generated code: output=115a4afa83117929 input=a9049054013a1b77]*/

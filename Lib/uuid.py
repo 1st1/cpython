@@ -127,6 +127,7 @@ try:
     _generate_time_safe = getattr(_uuid, "generate_time_safe", None)
     _has_stable_extractable_node = _uuid.has_stable_extractable_node
     _UuidCreate = getattr(_uuid, "UuidCreate", None)
+    _register_freelist_type = getattr(_uuid, "_register_freelist_type", None)
 except ImportError:
     _uuid = None
     _generate_time_safe = None
@@ -475,6 +476,8 @@ else:
         __slots__ = ()
 
     _c_UUID = UUID
+
+    _register_freelist_type(UUID)
 
 
 def _get_command_stdout(command, *args):
