@@ -1526,8 +1526,8 @@ class TestInternalsWithExtModule(BaseTestInternals, unittest.TestCase):
 
 class UuidHooks:
 
-    def __init__(self):
-        self._time = 0
+    def __init__(self, *, start_at=0):
+        self._time = start_at
         self._rnd = random.Random(0)
 
     def random_func(self, size):
@@ -1609,14 +1609,14 @@ class TestCImplementationCompat(unittest.TestCase):
         self.assertEqual(len(all_ps), len(all_us))
         self.assertEqual(len(all_ps), len(uuids))
 
-    def _install_hooks(self, uuid_mod):
-        py_hooks = UuidHooks()
+    def _install_hooks(self, uuid_mod, *, start_at=0):
+        py_hooks = UuidHooks(start_at=start_at)
         uuid_mod._install_py_hooks(
             random_func=py_hooks.random_func,
             time_func=py_hooks.time_func
         )
 
-        c_hooks = UuidHooks()
+        c_hooks = UuidHooks(start_at=start_at)
         uuid_mod._install_c_hooks(
             random_func=c_hooks.random_func,
             time_func=c_hooks.time_func
@@ -1637,14 +1637,14 @@ class TestCImplementationCompat(unittest.TestCase):
     def test_exact_same_algo_uuid7(self):
         import uuid
 
-        self._install_hooks(uuid)
-
-        for seq_number in range(1):
-            with self.subTest(seq_number=seq_number):
-                self.assertEqual(
-                    uuid._py_uuid7().hex,
-                    uuid._c_uuid7().hex,
-                )
+        for start_at in (0, 1_000_000 + 142):
+            self._install_hooks(uuid, start_at=start_at)
+            for seq_number in range(2):
+                with self.subTest(seq_number=seq_number, start_at=start_at):
+                    self.assertEqual(
+                        uuid._py_uuid7().hex,
+                        uuid._c_uuid7().hex,
+                    )
 
 
 if __name__ == '__main__':
