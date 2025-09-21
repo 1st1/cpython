@@ -288,7 +288,7 @@ gen_random(uuid_state *state, uint8_t *bytes, Py_ssize_t size)
                 return -1;
             }
 
-            if (!PyBytes_Check(buf)) {
+            if (!PyBytes_CheckExact(buf)) {
                 PyErr_SetString(PyExc_ValueError, "random_func must return bytes");
                 Py_DECREF(buf);
                 return -1;
@@ -353,18 +353,18 @@ uuid7_get_counter_and_tail(uuid_state *state, uint64_t *counter, uint32_t *tail)
         return -1;
     }
 
-    uint16_t high = ((uint16_t)rand_bytes[0] << 8) | rand_bytes[1];
-    uint64_t low = ((uint64_t)rand_bytes[2] << 56) |
-                   ((uint64_t)rand_bytes[3] << 48) |
-                   ((uint64_t)rand_bytes[4] << 40) |
-                   ((uint64_t)rand_bytes[5] << 32) |
-                   ((uint64_t)rand_bytes[6] << 24) |
-                   ((uint64_t)rand_bytes[7] << 16) |
-                   ((uint64_t)rand_bytes[8] << 8) |
-                   ((uint64_t)rand_bytes[9]);
+    *counter = (((uint64_t)rand_bytes[0] & 0x01) << 40) |
+                ((uint64_t)rand_bytes[1] << 32) |
+                ((uint64_t)rand_bytes[2] << 24) |
+                ((uint64_t)rand_bytes[3] << 16) |
+                ((uint64_t)rand_bytes[4] << 8) |
+                ((uint64_t)rand_bytes[5]);
 
-    *counter = (((uint64_t)(high & 0x1FF) << 32) | (low >> 32)) & 0x1FFFFFFFFFF;
-    *tail = (uint32_t)low;
+    *tail = ((uint64_t)rand_bytes[6] << 24) |
+            ((uint64_t)rand_bytes[7] << 16) |
+            ((uint64_t)rand_bytes[8] << 8) |
+            ((uint64_t)rand_bytes[9]);
+
     return 0;
 }
 
