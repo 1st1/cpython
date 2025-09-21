@@ -1627,7 +1627,7 @@ class TestCImplementationCompat(unittest.TestCase):
 
         self._install_hooks(uuid)
 
-        for seq_number in range(1):
+        for seq_number in range(100):
             with self.subTest(seq_number=seq_number):
                 self.assertEqual(
                     uuid._py_uuid4().hex,

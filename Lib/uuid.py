@@ -807,7 +807,7 @@ def uuid3(namespace, name):
 
 def uuid4():
     """Generate a random UUID."""
-    int_uuid_4 = int.from_bytes(os.urandom(16))
+    int_uuid_4 = int.from_bytes(_gen_random(16))
     int_uuid_4 &= _RFC_4122_CLEARFLAGS_MASK
     int_uuid_4 |= _RFC_4122_VERSION_4_FLAGS
     return UUID._from_int(int_uuid_4)
