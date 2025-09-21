@@ -1524,6 +1524,20 @@ class TestInternalsWithExtModule(BaseTestInternals, unittest.TestCase):
         self.check_node(node)
 
 
+class UuidHooks:
+
+    def __init__(self):
+        self._time = 0
+        self._rnd = random.Random(0)
+
+    def random_func(self, size):
+        return self._rnd.randbytes(size)
+
+    def time_func(self):
+        self._time += 1
+        return self._time
+
+
 @unittest.skipUnless(c_uuid, "requires the C _uuid module")
 class TestCImplementationCompat(unittest.TestCase):
     def test_compatibility(self):
@@ -1595,6 +1609,42 @@ class TestCImplementationCompat(unittest.TestCase):
         self.assertEqual(len(all_ps), len(all_us))
         self.assertEqual(len(all_ps), len(uuids))
 
+    def _install_hooks(self, uuid_mod):
+        py_hooks = UuidHooks()
+        uuid_mod._install_py_hooks(
+            random_func=py_hooks.random_func,
+            time_func=py_hooks.time_func
+        )
+
+        c_hooks = UuidHooks()
+        uuid_mod._install_c_hooks(
+            random_func=c_hooks.random_func,
+            time_func=c_hooks.time_func
+        )
+
+    def test_exact_same_algo_uuid4(self):
+        import uuid
+
+        self._install_hooks(uuid)
+
+        for seq_number in range(1):
+            with self.subTest(seq_number=seq_number):
+                self.assertEqual(
+                    uuid._py_uuid4().hex,
+                    uuid._c_uuid4().hex,
+                )
+
+    def test_exact_same_algo_uuid7(self):
+        import uuid
+
+        self._install_hooks(uuid)
+
+        for seq_number in range(1):
+            with self.subTest(seq_number=seq_number):
+                self.assertEqual(
+                    uuid._py_uuid7().hex,
+                    uuid._c_uuid7().hex,
+                )
 
 
 if __name__ == '__main__':
